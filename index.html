@@ -1,0 +1,159 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Neon Orbit</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app">
+    <section id="mainMenu" class="screen active">
+      <div class="menu-card">
+        <div class="logo">⚡</div>
+        <h1>NEON ORBIT</h1>
+        <p>Sobreviva. Evolua. Domine a arena.</p>
+        <button id="playBtn">🎮 JOGAR</button>
+        <button id="instructionsBtn" class="secondary">📖 COMO JOGAR</button>
+      </div>
+    </section>
+
+    <section id="modeMenu" class="screen">
+      <div class="menu-card">
+        <h2>ESCOLHA O MODO</h2>
+        <button id="soloBtn">🧑 SOLO</button>
+        <button id="duoBtn">👥 DUO LOCAL</button>
+        <button id="backModeBtn" class="secondary">↩ VOLTAR</button>
+      </div>
+    </section>
+
+    <section id="instructionsMenu" class="screen">
+      <div class="menu-card instructions">
+        <h2>📖 COMO JOGAR</h2>
+        <p>🟡 Colete as orbes antes que o tempo acabe.</p>
+        <p>👾 Desvie dos inimigos e sobreviva.</p>
+        <p>⭐ Ganhe XP e escolha melhorias a cada 5 níveis.</p>
+        <p>🔓 Você começa apenas com o Dash desbloqueado.</p>
+        <p>💚 No Duo, uma melhoria pode permitir reviver o parceiro.</p>
+        <p>👑 Enfrente chefes cada vez mais difíceis.</p>
+        <p>⌨️ P1: setas do teclado. Habilidades: 1–8.</p>
+        <p>⌨️ P2: WASD. Habilidades: Q, E, R, T, Y, U, I, O.</p>
+        <p>📱 No celular, use os joysticks virtuais.</p>
+        <button id="backInstructionsBtn">↩ VOLTAR</button>
+      </div>
+    </section>
+
+    <section id="gameScreen" class="screen">
+      <header id="topHud">
+        <div class="hud-item">⏱️ <span id="timeValue">30</span>s</div>
+        <div class="hud-item">🎯 Fase <span id="stageValue">1</span></div>
+        <div class="hud-item">🟡 <span id="collectedValue">0</span>/<span id="targetValue">0</span></div>
+        <div class="hud-item">👾 <span id="enemyValue">0</span></div>
+        <button id="musicBtn" class="hud-button" aria-label="Alternar música">🔊</button>
+        <button id="menuBtn" class="hud-button" aria-label="Voltar ao menu">🏠</button>
+      </header>
+
+      <div id="gameLayout">
+        <aside id="playerPanel1" class="player-panel p1">
+          <div class="player-heading">
+            <span class="player-avatar">⚡</span>
+            <div>
+              <strong id="p1Name">JOGADOR 1</strong>
+              <small>PLAYER ONE</small>
+            </div>
+          </div>
+          <div class="stat-row"><span>❤️ Vidas</span><strong id="p1Lives">3/3</strong></div>
+          <div class="stat-row"><span>⭐ Nível</span><strong id="p1Level">1</strong></div>
+          <div class="xp-label"><span>✨ XP</span><span id="p1XpText">0/100</span></div>
+          <div class="xp-track"><div id="p1XpBar" class="xp-fill"></div></div>
+          <div class="ability-heading">⚡ HABILIDADES</div>
+          <div id="abilitiesP1" class="ability-grid"></div>
+        </aside>
+
+        <div id="arenaWrap">
+          <canvas id="gameCanvas" width="1100" height="600"></canvas>
+          <div id="damageFlash"></div>
+
+          <div id="rouletteOverlay" class="overlay">
+            <div class="overlay-card">
+              <div class="eyebrow">PREPARE-SE</div>
+              <h2>🎰 PRÓXIMA FASE</h2>
+              <div id="rouletteNumber">10</div>
+              <p id="rouletteMessage">Prepare-se para coletar as orbes!</p>
+            </div>
+          </div>
+
+          <div id="bossOverlay" class="overlay">
+            <div class="boss-announcement">
+              <div class="boss-icon">👑</div>
+              <h2 id="bossTitle">BOSS INCOMING</h2>
+              <div id="bossCountdown">3</div>
+            </div>
+          </div>
+
+          <div id="upgradeOverlay" class="overlay">
+            <div class="overlay-card upgrade-card">
+              <h2 id="upgradeTitle">⭐ SUBIU DE NÍVEL!</h2>
+              <p id="upgradeSubtitle">Escolha uma melhoria para você</p>
+              <div id="upgradeChoices" class="upgrade-choices"></div>
+            </div>
+          </div>
+
+          <div id="gameOverOverlay" class="overlay">
+            <div class="overlay-card">
+              <div class="big-emoji">💀</div>
+              <h2>FIM DE JOGO</h2>
+              <p id="gameOverText">A arena venceu desta vez.</p>
+              <button id="restartBtn">🔄 JOGAR NOVAMENTE</button>
+              <button id="gameOverMenuBtn" class="secondary">🏠 MENU PRINCIPAL</button>
+            </div>
+          </div>
+
+          <div id="victoryOverlay" class="overlay">
+            <div class="overlay-card">
+              <div class="big-emoji">🏆</div>
+              <h2>VITÓRIA!</h2>
+              <p>Você sobreviveu à arena.</p>
+              <button id="victoryRestartBtn">🔄 JOGAR NOVAMENTE</button>
+              <button id="victoryMenuBtn" class="secondary">🏠 MENU PRINCIPAL</button>
+            </div>
+          </div>
+
+          <div id="stageToast"></div>
+        </div>
+
+        <aside id="playerPanel2" class="player-panel p2">
+          <div class="player-heading">
+            <span class="player-avatar">🔥</span>
+            <div>
+              <strong id="p2Name">JOGADOR 2</strong>
+              <small>PLAYER TWO</small>
+            </div>
+          </div>
+          <div class="stat-row"><span>❤️ Vidas</span><strong id="p2Lives">3/3</strong></div>
+          <div class="stat-row"><span>⭐ Nível</span><strong id="p2Level">1</strong></div>
+          <div class="xp-label"><span>✨ XP</span><span id="p2XpText">0/100</span></div>
+          <div class="xp-track"><div id="p2XpBar" class="xp-fill"></div></div>
+          <div class="ability-heading">⚡ HABILIDADES</div>
+          <div id="abilitiesP2" class="ability-grid"></div>
+        </aside>
+      </div>
+
+      <div id="mobileControls">
+        <div class="joystick-block">
+          <span>⚡ P1</span>
+          <div id="joy1" class="joystick"><div class="joystick-knob"></div></div>
+        </div>
+        <div id="mobileHint">Arraste para se mover</div>
+        <div id="joy2Block" class="joystick-block">
+          <span>🔥 P2</span>
+          <div id="joy2" class="joystick"><div class="joystick-knob"></div></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
