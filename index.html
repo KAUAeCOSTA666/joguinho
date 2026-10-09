@@ -22,12 +22,51 @@
     <section id="modeMenu" class="screen">
       <div class="menu-card">
         <h2>ESCOLHA O MODO</h2>
-        <button id="soloBtn">🧑 SOLO</button>
-        <button id="duoBtn">👥 DUO LOCAL</button>
-        <button id="backModeBtn" class="secondary">↩ VOLTAR</button>
+<button id="soloBtn">🧑 SOLO</button>
+<button id="duoBtn">👥 DUO LOCAL</button>
+<button id="onlineBtn">🌐 MULTIPLAYER ONLINE</button>
+<button id="backModeBtn" class="secondary">↩ VOLTAR</button>
       </div>
     </section>
+<section id="onlineMenu" class="screen">
+  <div class="menu-card online-card">
+    <div class="logo">🌐</div>
+    <h2>MULTIPLAYER ONLINE</h2>
+    <p>Jogue com outra pessoa pela internet.</p>
 
+    <button id="createRoomBtn">✨ CRIAR SALA</button>
+
+    <div class="online-divider">OU ENTRE EM UMA SALA</div>
+
+    <input
+      id="roomCodeInput"
+      type="text"
+      maxlength="6"
+      placeholder="CÓDIGO DA SALA"
+      autocomplete="off"
+      aria-label="Código da sala"
+    />
+
+    <button id="joinRoomBtn">🚀 ENTRAR NA SALA</button>
+
+    <div id="onlineStatus" class="online-status" role="status">
+      Conecte-se para começar.
+    </div>
+
+    <div id="roomInfo" class="room-info" hidden>
+      <span>CÓDIGO DA SALA</span>
+      <strong id="roomCodeDisplay">------</strong>
+      <p id="roomPlayersDisplay">Aguardando outro jogador...</p>
+      <button id="copyRoomCodeBtn" class="secondary">
+        📋 COPIAR CÓDIGO
+      </button>
+    </div>
+
+    <button id="backOnlineBtn" class="secondary">
+      ↩ VOLTAR
+    </button>
+  </div>
+</section>
     <section id="instructionsMenu" class="screen">
       <div class="menu-card instructions">
         <h2>📖 COMO JOGAR</h2>
@@ -154,6 +193,7 @@
     </section>
   </main>
 
-  <script src="script.js"></script>
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+<script src="script.js"></script>
 </body>
 </html>

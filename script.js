@@ -7,7 +7,13 @@ const W = canvas.width;
 const H = canvas.height;
 const $ = id => document.getElementById(id);
 
-const screens = ["mainMenu", "modeMenu", "instructionsMenu", "gameScreen"];
+const screens = [
+  "mainMenu",
+  "modeMenu",
+  "onlineMenu",
+  "instructionsMenu",
+  "gameScreen"
+];
 const overlays = ["rouletteOverlay", "bossOverlay", "upgradeOverlay", "gameOverOverlay", "victoryOverlay"];
 
 const ABILITIES = [
@@ -1834,7 +1840,224 @@ function toggleMusic() {
     stopMusic();
   }
 }
+// ===== MULTIPLAYER ONLINE: CONEXÃO E SALAS =====
 
+let onlineSocket = null;
+let onlineRoom = null;
+let onlineRole = null;
+let onlineRequestPending = false;
+
+const ONLINE_SERVER_URL = "https://joguinho-ma2q.onrender.com";
+
+function setOnlineStatus(message, type = "") {
+  const status = $("onlineStatus");
+  status.textContent = message;
+  status.className = `online-status ${type}`.trim();
+}
+
+function setOnlineButtonsDisabled(disabled) {
+  $("createRoomBtn").disabled = disabled;
+  $("joinRoomBtn").disabled = disabled;
+}
+
+function updateOnlineRoomInfo(playerCount) {
+  if (!onlineRoom) return;
+
+  $("roomInfo").hidden = false;
+  $("roomCodeDisplay").textContent = onlineRoom;
+
+  if (playerCount >= 2) {
+    $("roomPlayersDisplay").textContent =
+      "2/2 jogadores conectados! Sala pronta.";
+    setOnlineStatus(
+      "Os dois jogadores estão conectados. A sala está pronta para a próxima etapa.",
+      "success"
+    );
+  } else {
+    $("roomPlayersDisplay").textContent =
+      "1/2 jogadores conectados. Aguardando outro jogador...";
+  }
+}
+
+function setupOnlineSocket() {
+  if (onlineSocket) return onlineSocket;
+
+  if (typeof window.io !== "function") {
+    setOnlineStatus(
+      "Não foi possível carregar o cliente de conexão. Confira a internet e recarregue a página.",
+      "error"
+    );
+    return null;
+  }
+
+  onlineSocket = window.io(ONLINE_SERVER_URL, {
+    transports: ["websocket", "polling"],
+    reconnection: true,
+    timeout: 15000
+  });
+
+  onlineSocket.on("connect", () => {
+    if (!onlineRoom) {
+      setOnlineStatus("Conectado ao servidor. Pronto para criar ou entrar em uma sala.", "success");
+    }
+  });
+
+  onlineSocket.on("connect_error", () => {
+    setOnlineStatus(
+      "Não foi possível conectar ao servidor. Ele pode estar iniciando; tente novamente em alguns segundos.",
+      "error"
+    );
+    setOnlineButtonsDisabled(false);
+    onlineRequestPending = false;
+  });
+
+  onlineSocket.on("room-update", data => {
+    if (!data || !onlineRoom || data.code !== onlineRoom) return;
+    updateOnlineRoomInfo(data.players);
+  });
+
+  onlineSocket.on("player-joined", () => {
+    setOnlineStatus("Outro jogador entrou na sala!", "success");
+  });
+
+  onlineSocket.on("player-left", () => {
+    if (onlineRoom) {
+      updateOnlineRoomInfo(1);
+      setOnlineStatus("O outro jogador saiu. Aguardando alguém entrar novamente.");
+    }
+  });
+
+  onlineSocket.on("room-closed", () => {
+    onlineRoom = null;
+    onlineRole = null;
+    $("roomInfo").hidden = true;
+    setOnlineStatus("O criador encerrou a sala. Crie ou entre em outra sala.");
+    setOnlineButtonsDisabled(false);
+  });
+
+  onlineSocket.on("disconnect", () => {
+    if (onlineRoom) {
+      setOnlineStatus("Conexão interrompida. Tentando reconectar...", "error");
+    }
+  });
+
+  return onlineSocket;
+}
+
+function runOnlineRequest(action) {
+  if (onlineRoom) {
+    setOnlineStatus("Você já está em uma sala. Volte e saia dela antes de entrar em outra.");
+    return;
+  }
+
+  const socket = setupOnlineSocket();
+  if (!socket) return;
+
+  setOnlineButtonsDisabled(true);
+  onlineRequestPending = true;
+  setOnlineStatus("Conectando ao servidor...");
+
+  const request = () => {
+    if (!onlineRequestPending) return;
+
+    action(socket, result => {
+      onlineRequestPending = false;
+      setOnlineButtonsDisabled(false);
+
+      if (!result || !result.success) {
+        setOnlineStatus(
+          result?.error || "Não foi possível concluir a operação.",
+          "error"
+        );
+        return;
+      }
+
+      onlineRoom = result.code;
+      onlineRole = result.role;
+
+      $("roomInfo").hidden = false;
+      $("roomCodeDisplay").textContent = result.code;
+      $("roomPlayersDisplay").textContent =
+        "1/2 jogadores conectados. Aguardando outro jogador...";
+
+      setOnlineStatus(
+        result.role === "host"
+          ? "Sala criada! Compartilhe o código com seu amigo."
+          : "Você entrou na sala! Aguardando a conexão do outro jogador.",
+        "success"
+      );
+    });
+  };
+
+  if (socket.connected) {
+    request();
+  } else {
+    socket.once("connect", request);
+  }
+}
+
+$("onlineBtn").addEventListener("click", () => {
+  $("roomInfo").hidden = true;
+  $("roomCodeInput").value = "";
+  setOnlineStatus("Crie uma sala ou digite o código de outra sala.");
+  setOnlineButtonsDisabled(false);
+  showScreen("onlineMenu");
+});
+
+$("createRoomBtn").addEventListener("click", () => {
+  runOnlineRequest((socket, callback) => {
+    socket.emit("create-room", callback);
+  });
+});
+
+$("joinRoomBtn").addEventListener("click", () => {
+  const code = $("roomCodeInput").value.trim().toUpperCase();
+
+  if (!/^[A-F0-9]{6}$/.test(code)) {
+    setOnlineStatus("Digite um código válido de 6 caracteres.", "error");
+    return;
+  }
+
+  runOnlineRequest((socket, callback) => {
+    socket.emit("join-room", code, callback);
+  });
+});
+
+$("roomCodeInput").addEventListener("input", () => {
+  $("roomCodeInput").value = $("roomCodeInput").value
+    .toUpperCase()
+    .replace(/[^A-F0-9]/g, "")
+    .slice(0, 6);
+});
+
+$("copyRoomCodeBtn").addEventListener("click", async () => {
+  if (!onlineRoom) return;
+
+  try {
+    await navigator.clipboard.writeText(onlineRoom);
+    setOnlineStatus("Código copiado! Envie para seu amigo.", "success");
+  } catch {
+    setOnlineStatus(
+      `Copie manualmente este código: ${onlineRoom}`,
+      "success"
+    );
+  }
+});
+
+$("backOnlineBtn").addEventListener("click", () => {
+  onlineRequestPending = false;
+  onlineRoom = null;
+  onlineRole = null;
+
+  if (onlineSocket) {
+    onlineSocket.disconnect();
+    onlineSocket = null;
+  }
+
+  $("roomInfo").hidden = true;
+  setOnlineButtonsDisabled(false);
+  showScreen("modeMenu");
+});
 $("playBtn").addEventListener("click", () => showScreen("modeMenu"));
 $("instructionsBtn").addEventListener("click", () => showScreen("instructionsMenu"));
 $("backModeBtn").addEventListener("click", () => showScreen("mainMenu"));

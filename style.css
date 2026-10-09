@@ -786,3 +786,111 @@ button.secondary {
     transition-duration: .01ms !important;
   }
 }
+/* ===== MULTIPLAYER ONLINE ===== */
+
+.online-card {
+  width: min(460px, 92vw);
+}
+
+#onlineBtn {
+  border: 1px solid rgba(54, 245, 255, 0.65);
+  background: linear-gradient(110deg, #123c59, #173c35);
+}
+
+.online-divider {
+  margin: 18px 0 12px;
+  color: #9caecb;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+#roomCodeInput {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 14px 12px;
+  border: 1px solid rgba(54, 245, 255, 0.35);
+  border-radius: 10px;
+  outline: none;
+  background: rgba(4, 10, 25, 0.95);
+  color: #36f5ff;
+  font-family: "Orbitron", sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 5px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+#roomCodeInput:focus {
+  border-color: #36f5ff;
+  box-shadow: 0 0 16px rgba(54, 245, 255, 0.16);
+}
+
+.online-status {
+  min-height: 42px;
+  margin-top: 14px;
+  padding: 10px;
+  border: 1px solid rgba(156, 174, 203, 0.18);
+  border-radius: 10px;
+  background: rgba(5, 12, 28, 0.75);
+  color: #c1cce1;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.online-status.error {
+  color: #ff7a9c;
+  border-color: rgba(255, 67, 140, 0.4);
+}
+
+.online-status.success {
+  color: #a7ff5a;
+  border-color: rgba(167, 255, 90, 0.35);
+}
+
+.room-info {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(54, 245, 255, 0.35);
+  border-radius: 12px;
+  background: rgba(10, 30, 49, 0.75);
+}
+
+.room-info[hidden] {
+  display: none !important;
+}
+
+.room-info > span {
+  display: block;
+  color: #9caecb;
+  font-size: 0.75rem;
+  letter-spacing: 2px;
+}
+
+.room-info > strong {
+  display: block;
+  margin: 8px 0;
+  color: #36f5ff;
+  font-family: "Orbitron", sans-serif;
+  font-size: 2rem;
+  letter-spacing: 7px;
+  text-shadow: 0 0 18px rgba(54, 245, 255, 0.35);
+}
+
+.room-info p {
+  color: #d5def0;
+  font-family: "Rajdhani", sans-serif;
+}
+
+#copyRoomCodeBtn {
+  margin-top: 8px;
+}
+
+#onlineMenu button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
