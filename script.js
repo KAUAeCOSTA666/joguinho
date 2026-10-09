@@ -7,13 +7,7 @@ const W = canvas.width;
 const H = canvas.height;
 const $ = id => document.getElementById(id);
 
-const screens = [
-  "mainMenu",
-  "modeMenu",
-  "onlineMenu",
-  "instructionsMenu",
-  "gameScreen"
-];
+const screens = ["mainMenu", "modeMenu", "onlineMenu", "instructionsMenu", "gameScreen"];
 const overlays = ["rouletteOverlay", "bossOverlay", "upgradeOverlay", "gameOverOverlay", "victoryOverlay"];
 
 const ABILITIES = [
@@ -169,7 +163,7 @@ function resetPlayerPanels() {
   $("playerPanel1").style.display = "";
   $("playerPanel2").style.display = game.mode === "duo" ? "" : "none";
   $("gameScreen").classList.toggle("duo", game.mode === "duo");
-  $("joy2Block").style.visibility = game.mode === "duo" ? "visible" : "hidden";
+  $("mobileP2").classList.toggle("hidden-mobile", game.mode !== "duo");
 }
 
 function buildAbilityPanels() {
@@ -224,7 +218,9 @@ function startGame(mode) {
   hideOverlays();
   stopMusic();
 
+  if (onlineRole && mode !== "duo") { onlineRole = null; onlineRoom = null; onlineStarted = false; }
   game.mode = mode;
+  $("modeValue").textContent = mode === "solo" ? "🧑 SOLO" : (onlineRole ? "🌐 ONLINE DUO" : "👥 DUO LOCAL");
   game.state = "roulette";
   game.stage = 1;
   game.bossNumber = 0;
@@ -263,6 +259,8 @@ function startGame(mode) {
 }
 
 function returnToMenu() {
+  if (onlineSocket) { try { onlineSocket.disconnect(); } catch (_) {} onlineSocket = null; }
+  onlineRoom = null; onlineRole = null; onlineStarted = false; onlinePlayerCount = 0; remotePlayerInput = { x: 0, y: 0 };
   clearGameTimers();
   hideOverlays();
   stopMusic();
@@ -835,6 +833,11 @@ function openUpgradeSelection(player) {
   game.upgradePlayer = player;
   game.upgradeChoices = createUpgradeChoices(player);
 
+  if (onlineRole === "host" && player.id === 2) {
+    $("upgradeOverlay").classList.remove("show");
+    return;
+  }
+
   $("upgradeTitle").textContent = `⭐ JOGADOR ${player.id}: SUBIU DE NÍVEL!`;
   $("upgradeSubtitle").textContent =
     `Escolha uma melhoria para o Jogador ${player.id}. Só ele recebe o bônus.`;
@@ -1034,11 +1037,9 @@ function getNearestEnemy(x, y) {
 }
 
 function getPlayerInput(player) {
-  if (onlineRole === "host" && player.id === 2) {
-    return remotePlayerInput;
-  }
-
+  if (onlineRole === "host" && player.id === 2) return { ...remotePlayerInput };
   const joystick = joystickState[player.id];
+
   if (joystick.x || joystick.y) {
     return { x: joystick.x, y: joystick.y };
   }
@@ -1259,7 +1260,6 @@ function updateHud() {
 }
 
 function update(dt) {
-   // O convidado recebe a simulação do criador da sala.
   if (onlineRole === "guest") return;
   if (game.toastTimer > 0) {
     game.toastTimer -= dt * 1000;
@@ -1615,16 +1615,11 @@ function loop(timestamp) {
   game.lastTime = timestamp;
 
   update(dt);
-
-  if (onlineRole === "guest") {
-    sendOnlinePlayerInput(timestamp);
-  } else {
-    sendOnlineSnapshot(timestamp);
-  }
-
   draw(timestamp / 1000);
+
   requestAnimationFrame(loop);
 }
+
 function setupJoystick(id, playerId) {
   const joystick = $(id);
   const knob = joystick.querySelector(".joystick-knob");
@@ -1850,446 +1845,7 @@ function toggleMusic() {
     stopMusic();
   }
 }
-// ===== MULTIPLAYER ONLINE: CONEXÃO E SALAS =====
 
-let onlineSocket = null;
-let onlineRoom = null;
-let onlineRole = null;
-let onlineRequestPending = false;
-let remotePlayerInput = { x: 0, y: 0 };
-let lastOnlineInputAt = 0;
-let lastOnlineSnapshotAt = 0;
-const ONLINE_SERVER_URL = "https://joguinho-ma2q.onrender.com";
-
-function setOnlineStatus(message, type = "") {
-  const status = $("onlineStatus");
-  status.textContent = message;
-  status.className = `online-status ${type}`.trim();
-}
-
-function setOnlineButtonsDisabled(disabled) {
-  $("createRoomBtn").disabled = disabled;
-  $("joinRoomBtn").disabled = disabled;
-}
-
-function updateOnlineRoomInfo(playerCount) {
-  if (!onlineRoom) return;
-
-  $("roomInfo").hidden = false;
-  $("roomCodeDisplay").textContent = onlineRoom;
-
-  if (playerCount >= 2) {
-    $("roomPlayersDisplay").textContent =
-      "2/2 jogadores conectados! Sala pronta.";
-    setOnlineStatus(
-      "Os dois jogadores estão conectados. A sala está pronta para a próxima etapa.",
-      "success"
-    );
-  } else {
-    $("roomPlayersDisplay").textContent =
-      "1/2 jogadores conectados. Aguardando outro jogador...";
-  }
-}
-function createOnlineSnapshot() {
-  return {
-    state: game.state,
-    stage: game.stage,
-    bossNumber: game.bossNumber,
-    time: game.time,
-    target: game.target,
-    collected: game.collected,
-    score: game.score,
-    isBoss: game.isBoss,
-    players: game.players,
-    enemies: game.enemies,
-    orbs: game.orbs,
-    particles: game.particles,
-    floatingTexts: game.floatingTexts,
-    boss: game.boss,
-    stageTimer: game.stageTimer,
-    bossAttackTimer: game.bossAttackTimer,
-    enemySpawnTimer: game.enemySpawnTimer,
-    transitionLocked: game.transitionLocked,
-    upgradePlayerId: game.upgradePlayer?.id ?? null,
-    upgradeChoices: game.upgradeChoices.map(choice => ({
-      icon: choice.icon,
-      name: choice.name,
-      description: choice.description,
-      revive: Boolean(choice.revive)
-    })),
-    rouletteNumber: $("rouletteNumber").textContent,
-    rouletteMessage: $("rouletteMessage").textContent,
-    bossTitle: $("bossTitle").textContent,
-    bossCountdown: $("bossCountdown").textContent
-  };
-}
-
-function sendOnlineSnapshot(timestamp) {
-  if (onlineRole !== "host") return;
-  if (!onlineSocket?.connected || !onlineRoom) return;
-  if (!game.players.length || game.state === "menu") return;
-  if (timestamp - lastOnlineSnapshotAt < 60) return;
-
-  lastOnlineSnapshotAt = timestamp;
-  onlineSocket.emit("game-state", createOnlineSnapshot());
-}
-
-function sendOnlinePlayerInput(timestamp) {
-  if (onlineRole !== "guest") return;
-  if (!onlineSocket?.connected || !onlineRoom) return;
-  if (game.state !== "playing") return;
-  if (timestamp - lastOnlineInputAt < 50) return;
-  if (!game.players[1]) return;
-
-  lastOnlineInputAt = timestamp;
-
-  const input = getPlayerInput(game.players[1]);
-
-  onlineSocket.emit("player-input", {
-    x: input.x,
-    y: input.y
-  });
-}
-let guestUpgradeKey = "";
-
-function applyOnlineSnapshot(data) {
-  game.state = data.state;
-  game.stage = data.stage;
-  game.bossNumber = data.bossNumber;
-  game.time = data.time;
-  game.target = data.target;
-  game.collected = data.collected;
-  game.score = data.score;
-  game.isBoss = data.isBoss;
-  game.players = data.players || [];
-  game.enemies = data.enemies || [];
-  game.orbs = data.orbs || [];
-  game.particles = data.particles || [];
-  game.floatingTexts = data.floatingTexts || [];
-  game.boss = data.boss || null;
-  game.stageTimer = data.stageTimer;
-  game.bossAttackTimer = data.bossAttackTimer;
-  game.enemySpawnTimer = data.enemySpawnTimer;
-  game.transitionLocked = data.transitionLocked;
-  game.upgradePlayer = data.upgradePlayerId
-    ? game.players[data.upgradePlayerId - 1]
-    : null;
-
-  game.upgradeChoices = data.upgradeChoices || [];
-
-  $("rouletteNumber").textContent = data.rouletteNumber ?? game.target;
-  $("rouletteMessage").textContent = data.rouletteMessage || "";
-  $("bossTitle").textContent = data.bossTitle || "BOSS INCOMING";
-  $("bossCountdown").textContent = data.bossCountdown ?? "3";
-
-  $("rouletteOverlay").classList.toggle(
-    "show",
-    game.state === "roulette"
-  );
-
-  $("bossOverlay").classList.toggle(
-    "show",
-    game.state === "bossIntro"
-  );
-
-  $("gameOverOverlay").classList.toggle(
-    "show",
-    game.state === "gameover"
-  );
-
-  $("victoryOverlay").classList.toggle(
-    "show",
-    game.state === "victory"
-  );
-
-  const guestMustChoose =
-    game.state === "upgrade" && data.upgradePlayerId === 2;
-
-  $("upgradeOverlay").classList.toggle("show", guestMustChoose);
-
-  if (guestMustChoose) {
-    const key = `${data.upgradePlayerId}:` +
-      game.upgradeChoices.map(choice => choice.name).join("|");
-
-    if (key !== guestUpgradeKey) {
-      guestUpgradeKey = key;
-
-      const container = $("upgradeChoices");
-      container.innerHTML = "";
-
-      game.upgradeChoices.forEach((choice, index) => {
-        const button = document.createElement("button");
-        button.className = "upgrade-choice";
-
-        if (choice.revive) {
-          button.classList.add("revive-choice");
-        }
-
-        button.innerHTML = `
-          <span class="upgrade-icon">${choice.icon}</span>
-          <strong>${choice.name}</strong>
-          <small>${choice.description}</small>
-        `;
-
-        button.addEventListener("click", () => {
-          if (!onlineSocket?.connected) {
-            setOnlineStatus("Conexão perdida. Não foi possível escolher a melhoria.", "error");
-            return;
-          }
-
-          container.querySelectorAll("button").forEach(item => {
-            item.disabled = true;
-          });
-
-          onlineSocket.emit("game-action", {
-            type: "upgrade-choice",
-            index
-          });
-        });
-
-        container.appendChild(button);
-      });
-    }
-  } else {
-    guestUpgradeKey = "";
-  }
-
-  updateHud();
-  updatePlayerPanels();
-
-  if (game.isBoss && game.musicEnabled) {
-    setBossMusic(true);
-  } else if (game.musicEnabled) {
-    setBossMusic(false);
-  }
-}
-function setupOnlineSocket() {
-  if (onlineSocket) return onlineSocket;
-
-  if (typeof window.io !== "function") {
-    setOnlineStatus(
-      "Não foi possível carregar o cliente de conexão. Confira a internet e recarregue a página.",
-      "error"
-    );
-    return null;
-  }
-
-  onlineSocket = window.io(ONLINE_SERVER_URL, {
-    transports: ["websocket", "polling"],
-    reconnection: true,
-    timeout: 15000
-  });
-
-  onlineSocket.on("connect", () => {
-    if (!onlineRoom) {
-      setOnlineStatus("Conectado ao servidor. Pronto para criar ou entrar em uma sala.", "success");
-    }
-  });
-
-  onlineSocket.on("connect_error", () => {
-    setOnlineStatus(
-      "Não foi possível conectar ao servidor. Ele pode estar iniciando; tente novamente em alguns segundos.",
-      "error"
-    );
-    setOnlineButtonsDisabled(false);
-    onlineRequestPending = false;
-  });
-
-  onlineSocket.on("room-update", data => {
-    if (!data || !onlineRoom || data.code !== onlineRoom) return;
-    updateOnlineRoomInfo(data.players);
-  });
-onlineSocket.on("game-start", () => {
-  if (onlineRole !== "guest") return;
-
-  startGame("duo");
-  clearGameTimers();
-  hideOverlays();
-
-  game.state = "onlineGuestWaiting";
-  game.lastTime = performance.now();
-  lastOnlineInputAt = 0;
-});
-
-onlineSocket.on("game-state", data => {
-  if (onlineRole !== "guest" || !data) return;
-  applyOnlineSnapshot(data);
-});
-
-onlineSocket.on("player-input", data => {
-  if (onlineRole !== "host" || !data?.input) return;
-
-  remotePlayerInput = {
-    x: clamp(Number(data.input.x) || 0, -1, 1),
-    y: clamp(Number(data.input.y) || 0, -1, 1)
-  };
-});
-
-onlineSocket.on("game-action", data => {
-  if (onlineRole !== "host" || !data?.action) return;
-
-  const action = data.action;
-
-  if (
-    action.type === "ability" &&
-    Number.isInteger(action.index) &&
-    action.index >= 0 &&
-    action.index < ABILITIES.length
-  ) {
-    activateAbility(game.players[1], action.index);
-  }
-
-  if (
-    action.type === "upgrade-choice" &&
-    game.state === "upgrade" &&
-    game.upgradePlayer?.id === 2 &&
-    Number.isInteger(action.index)
-  ) {
-    chooseUpgrade(action.index);
-  }
-});
-  onlineSocket.on("player-joined", () => {
-    setOnlineStatus("Outro jogador entrou na sala!", "success");
-  });
-
-  onlineSocket.on("player-left", () => {
-    if (onlineRoom) {
-      updateOnlineRoomInfo(1);
-      setOnlineStatus("O outro jogador saiu. Aguardando alguém entrar novamente.");
-    }
-  });
-
-  onlineSocket.on("room-closed", () => {
-    onlineRoom = null;
-    onlineRole = null;
-    $("roomInfo").hidden = true;
-    setOnlineStatus("O criador encerrou a sala. Crie ou entre em outra sala.");
-    setOnlineButtonsDisabled(false);
-  });
-
-  onlineSocket.on("disconnect", () => {
-    if (onlineRoom) {
-      setOnlineStatus("Conexão interrompida. Tentando reconectar...", "error");
-    }
-  });
-
-  return onlineSocket;
-}
-
-function runOnlineRequest(action) {
-  if (onlineRoom) {
-    setOnlineStatus("Você já está em uma sala. Volte e saia dela antes de entrar em outra.");
-    return;
-  }
-
-  const socket = setupOnlineSocket();
-  if (!socket) return;
-
-  setOnlineButtonsDisabled(true);
-  onlineRequestPending = true;
-  setOnlineStatus("Conectando ao servidor...");
-
-  const request = () => {
-    if (!onlineRequestPending) return;
-
-    action(socket, result => {
-      onlineRequestPending = false;
-      setOnlineButtonsDisabled(false);
-
-      if (!result || !result.success) {
-        setOnlineStatus(
-          result?.error || "Não foi possível concluir a operação.",
-          "error"
-        );
-        return;
-      }
-
-      onlineRoom = result.code;
-      onlineRole = result.role;
-
-      $("roomInfo").hidden = false;
-      $("roomCodeDisplay").textContent = result.code;
-      $("roomPlayersDisplay").textContent =
-        "1/2 jogadores conectados. Aguardando outro jogador...";
-
-      setOnlineStatus(
-        result.role === "host"
-          ? "Sala criada! Compartilhe o código com seu amigo."
-          : "Você entrou na sala! Aguardando a conexão do outro jogador.",
-        "success"
-      );
-    });
-  };
-
-  if (socket.connected) {
-    request();
-  } else {
-    socket.once("connect", request);
-  }
-}
-
-$("onlineBtn").addEventListener("click", () => {
-  $("roomInfo").hidden = true;
-  $("roomCodeInput").value = "";
-  setOnlineStatus("Crie uma sala ou digite o código de outra sala.");
-  setOnlineButtonsDisabled(false);
-  showScreen("onlineMenu");
-});
-
-$("createRoomBtn").addEventListener("click", () => {
-  runOnlineRequest((socket, callback) => {
-    socket.emit("create-room", callback);
-  });
-});
-
-$("joinRoomBtn").addEventListener("click", () => {
-  const code = $("roomCodeInput").value.trim().toUpperCase();
-
-  if (!/^[A-F0-9]{6}$/.test(code)) {
-    setOnlineStatus("Digite um código válido de 6 caracteres.", "error");
-    return;
-  }
-
-  runOnlineRequest((socket, callback) => {
-    socket.emit("join-room", code, callback);
-  });
-});
-
-$("roomCodeInput").addEventListener("input", () => {
-  $("roomCodeInput").value = $("roomCodeInput").value
-    .toUpperCase()
-    .replace(/[^A-F0-9]/g, "")
-    .slice(0, 6);
-});
-
-$("copyRoomCodeBtn").addEventListener("click", async () => {
-  if (!onlineRoom) return;
-
-  try {
-    await navigator.clipboard.writeText(onlineRoom);
-    setOnlineStatus("Código copiado! Envie para seu amigo.", "success");
-  } catch {
-    setOnlineStatus(
-      `Copie manualmente este código: ${onlineRoom}`,
-      "success"
-    );
-  }
-});
-
-$("backOnlineBtn").addEventListener("click", () => {
-  onlineRequestPending = false;
-  onlineRoom = null;
-  onlineRole = null;
-
-  if (onlineSocket) {
-    onlineSocket.disconnect();
-    onlineSocket = null;
-  }
-
-  $("roomInfo").hidden = true;
-  setOnlineButtonsDisabled(false);
-  showScreen("modeMenu");
-});
 $("playBtn").addEventListener("click", () => showScreen("modeMenu"));
 $("instructionsBtn").addEventListener("click", () => showScreen("instructionsMenu"));
 $("backModeBtn").addEventListener("click", () => showScreen("mainMenu"));
@@ -2346,3 +1902,354 @@ requestAnimationFrame(timestamp => {
   game.lastTime = timestamp;
   requestAnimationFrame(loop);
 });
+
+
+// ================= MULTIPLAYER ONLINE =================
+const ONLINE_SERVER_URL = "https://joguinho-ma2q.onrender.com";
+let onlineSocket = null;
+let onlineRoom = null;
+let onlineRole = null;
+let onlinePlayerCount = 0;
+let onlineStarted = false;
+let remotePlayerInput = { x: 0, y: 0 };
+let lastOnlineInputAt = 0;
+let lastOnlineSnapshotAt = 0;
+let lastOnlineUiState = "";
+
+function setOnlineStatus(message, kind = "") {
+  const el = $("onlineStatus");
+  if (!el) return;
+  el.textContent = message;
+  el.classList.remove("error", "success");
+  if (kind) el.classList.add(kind);
+}
+
+function updateOnlineRoomInfo(count = onlinePlayerCount) {
+  onlinePlayerCount = count;
+  const info = $("roomInfo");
+  if (!info) return;
+  info.classList.toggle("hidden-panel", !onlineRoom);
+  $("roomCodeDisplay").textContent = onlineRoom || "------";
+  $("roomPlayersDisplay").textContent = `Jogadores: ${onlinePlayerCount}/2`;
+  $("startOnlineGameBtn").disabled = !(onlineRole === "host" && onlinePlayerCount === 2 && !onlineStarted);
+  $("startOnlineGameBtn").textContent = onlineStarted ? "PARTIDA EM ANDAMENTO" : "🚀 INICIAR PARTIDA";
+}
+
+function connectOnlineSocket() {
+  if (onlineSocket?.connected) return Promise.resolve(true);
+  if (typeof window.io !== "function") {
+    setOnlineStatus("Não foi possível carregar a conexão online. Recarregue a página.", "error");
+    return Promise.resolve(false);
+  }
+  if (onlineSocket) {
+    try { onlineSocket.disconnect(); } catch (_) {}
+  }
+  setOnlineStatus("Conectando ao servidor...", "");
+  onlineSocket = window.io(ONLINE_SERVER_URL, {
+    transports: ["websocket", "polling"],
+    reconnection: true,
+    timeout: 15000
+  });
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = value => { if (!settled) { settled = true; resolve(value); } };
+    onlineSocket.once("connect", () => {
+      setOnlineStatus("Conectado ao servidor. Crie ou entre em uma sala.", "success");
+      finish(true);
+    });
+    onlineSocket.once("connect_error", () => {
+      setOnlineStatus("Servidor indisponível no momento. Tente novamente em alguns segundos.", "error");
+      finish(false);
+    });
+    onlineSocket.on("disconnect", () => {
+      if (onlineRoom) setOnlineStatus("Conexão perdida. A sala pode ter sido encerrada.", "error");
+    });
+    onlineSocket.on("connect", () => {
+      if (!onlineRoom) setOnlineStatus("Conectado ao servidor. Crie ou entre em uma sala.", "success");
+    });
+    onlineSocket.on("room-update", data => {
+      if (data?.code && onlineRoom && data.code !== onlineRoom) return;
+      updateOnlineRoomInfo(data?.players ?? onlinePlayerCount);
+      if (onlinePlayerCount === 2) setOnlineStatus("Os dois jogadores estão conectados!", "success");
+      else setOnlineStatus("Sala criada. Esperando o segundo jogador...", "");
+    });
+    onlineSocket.on("player-joined", () => {
+      onlinePlayerCount = 2;
+      updateOnlineRoomInfo(2);
+      setOnlineStatus("Seu amigo entrou na sala. Pode iniciar!", "success");
+    });
+    onlineSocket.on("player-left", () => {
+      onlinePlayerCount = 1;
+      onlineStarted = false;
+      updateOnlineRoomInfo(1);
+      setOnlineStatus("O outro jogador saiu da sala.", "error");
+    });
+    onlineSocket.on("room-closed", () => {
+      onlineRoom = null;
+      onlineRole = null;
+      onlineStarted = false;
+      onlinePlayerCount = 0;
+      updateOnlineRoomInfo(0);
+      setOnlineStatus("O anfitrião encerrou a sala.", "error");
+      if (game.state !== "menu") returnToMenu();
+    });
+    onlineSocket.on("game-start", () => {
+      if (onlineRole !== "guest") return;
+      onlineStarted = true;
+      // Start local rendering/audio, then immediately wait for the host's authoritative state.
+      startGame("duo");
+      clearGameTimers();
+      game.state = "onlineGuestWaiting";
+      game.mode = "duo";
+      resetPlayerPanels();
+      setOnlineStatus("Partida iniciada! Você controla o Jogador 2.", "success");
+    });
+    onlineSocket.on("game-state", data => applyOnlineSnapshot(data));
+    onlineSocket.on("player-input", packet => {
+      if (onlineRole === "host" && packet?.input) {
+        remotePlayerInput = {
+          x: clamp(Number(packet.input.x) || 0, -1, 1),
+          y: clamp(Number(packet.input.y) || 0, -1, 1)
+        };
+      }
+    });
+    onlineSocket.on("game-action", packet => {
+      if (onlineRole !== "host" || !packet?.action) return;
+      const action = packet.action;
+      if (action.type === "ability") {
+        const player = game.players[1];
+        if (player && Number.isInteger(action.index) && action.index >= 0 && action.index < 8) activateAbility(player, action.index);
+      } else if (action.type === "upgrade-choice" && game.state === "upgrade" && game.upgradePlayer?.id === 2) {
+        chooseUpgrade(Number(action.index));
+      }
+    });
+  });
+}
+
+function createOnlineSnapshot() {
+  return {
+    state: game.state,
+    mode: "duo",
+    stage: game.stage,
+    bossNumber: game.bossNumber,
+    time: game.time,
+    target: game.target,
+    collected: game.collected,
+    score: game.score,
+    isBoss: game.isBoss,
+    players: game.players,
+    enemies: game.enemies,
+    orbs: game.orbs,
+    particles: game.particles,
+    floatingTexts: game.floatingTexts,
+    boss: game.boss,
+    bossAttackTimer: game.bossAttackTimer,
+    enemySpawnTimer: game.enemySpawnTimer,
+    transitionLocked: game.transitionLocked,
+    upgradePlayerId: game.upgradePlayer?.id ?? null,
+    upgradeChoices: game.upgradeChoices.map(u => ({ icon: u.icon, name: u.name, description: u.description, revive: !!u.revive })),
+    rouletteNumber: $("rouletteNumber").textContent,
+    bossCountdown: $("bossCountdown").textContent,
+    toast: $("stageToast").textContent,
+    toastTimer: game.toastTimer
+  };
+}
+
+function sendOnlineSnapshot(force = false) {
+  if (onlineRole !== "host" || !onlineSocket?.connected || !onlineRoom || onlinePlayerCount !== 2) return;
+  const now = performance.now();
+  if (!force && now - lastOnlineSnapshotAt < 60) return;
+  lastOnlineSnapshotAt = now;
+  onlineSocket.emit("game-state", createOnlineSnapshot());
+}
+
+function sendOnlinePlayerInput() {
+  if (onlineRole !== "guest" || !onlineSocket?.connected || !onlineRoom || !onlineStarted) return;
+  const now = performance.now();
+  if (now - lastOnlineInputAt < 35) return;
+  lastOnlineInputAt = now;
+  const input = getPlayerInput({ id: 1 });
+  onlineSocket.emit("player-input", input);
+}
+
+function applyOnlineSnapshot(data) {
+  if (onlineRole !== "guest" || !data || !Array.isArray(data.players)) return;
+  if (!onlineStarted) {
+    onlineStarted = true;
+    onlinePlayerCount = 2;
+    showScreen("gameScreen");
+  }
+  game.mode = "duo";
+  game.state = data.state;
+  for (const key of ["stage", "bossNumber", "time", "target", "collected", "score", "isBoss", "bossAttackTimer", "enemySpawnTimer", "transitionLocked", "toastTimer"]) {
+    if (data[key] !== undefined) game[key] = data[key];
+  }
+  game.players = data.players;
+  game.enemies = data.enemies || [];
+  game.orbs = data.orbs || [];
+  game.particles = data.particles || [];
+  game.floatingTexts = data.floatingTexts || [];
+  game.boss = data.boss || null;
+  game.upgradeChoices = data.upgradeChoices || [];
+  game.upgradePlayer = data.upgradePlayerId ? game.players[data.upgradePlayerId - 1] : null;
+  $("rouletteNumber").textContent = data.rouletteNumber ?? "0";
+  $("bossCountdown").textContent = data.bossCountdown ?? "3";
+  $("stageToast").textContent = data.toast || "";
+  $("stageToast").classList.toggle("show", !!data.toast && data.toastTimer > 0);
+  $("rouletteOverlay").classList.toggle("show", data.state === "roulette");
+  $("rouletteOverlay").classList.toggle("hidden", data.state !== "roulette");
+  $("bossOverlay").classList.toggle("show", data.state === "bossIntro");
+  $("bossOverlay").classList.toggle("hidden", data.state !== "bossIntro");
+  const remoteUpgrade = data.state === "upgrade" && data.upgradePlayerId === 2;
+  $("upgradeOverlay").classList.toggle("show", remoteUpgrade);
+  $("upgradeOverlay").classList.toggle("hidden", !remoteUpgrade);
+  $("gameOverOverlay").classList.toggle("show", data.state === "gameover");
+  $("gameOverOverlay").classList.toggle("hidden", data.state !== "gameover");
+  $("victoryOverlay").classList.toggle("show", data.state === "victory");
+  $("victoryOverlay").classList.toggle("hidden", data.state !== "victory");
+  $("bossLabel").classList.toggle("hidden", !data.isBoss || !["playing", "upgrade"].includes(data.state));
+  $("modeValue").textContent = "🌐 ONLINE DUO";
+  resetPlayerPanels();
+  updatePlayerPanels();
+  updateHud();
+  if (remoteUpgrade) renderRemoteUpgradeChoices(data.upgradeChoices || []);
+  if (game.musicEnabled) setBossMusic(!!data.isBoss && data.state === "playing");
+}
+
+function renderRemoteUpgradeChoices(choices) {
+  const container = $("upgradeChoices");
+  const signature = JSON.stringify(choices.map(c => [c.icon, c.name, c.description]));
+  if (container.dataset.onlineSignature === signature) return;
+  container.dataset.onlineSignature = signature;
+  container.innerHTML = "";
+  choices.forEach((choice, index) => {
+    const button = document.createElement("button");
+    button.className = "upgrade-choice";
+    if (choice.revive) button.classList.add("revive-choice");
+    button.innerHTML = `<span class="upgrade-icon">${choice.icon || "⭐"}</span><strong>${choice.name || "Melhoria"}</strong><small>${choice.description || "Melhoria para seu personagem"}</small>`;
+    button.addEventListener("click", () => {
+      if (onlineRole === "guest" && onlineSocket?.connected) {
+        onlineSocket.emit("game-action", { type: "upgrade-choice", index });
+        container.querySelectorAll("button").forEach(b => b.disabled = true);
+        $("upgradePlayerName").textContent = "Aguardando confirmação do anfitrião...";
+      }
+    });
+    container.appendChild(button);
+  });
+  $("upgradePlayerName").textContent = "JOGADOR 2 — escolha uma melhoria";
+}
+
+function handleAbilityKey(key) {
+  const normalized = key.length === 1 ? key.toLowerCase() : key;
+  const keys1 = ["1", "2", "3", "4", "5", "6", "7", "8"];
+  const keys2 = ["q", "e", "r", "t", "y", "u", "i", "o"];
+  const index1 = keys1.indexOf(normalized);
+  const index2 = keys2.indexOf(normalized);
+  if (onlineRole === "guest") {
+    const guestIndex = index2 !== -1 ? index2 : index1;
+    if (guestIndex !== -1 && onlineSocket?.connected && onlineStarted) {
+      onlineSocket.emit("game-action", { type: "ability", index: guestIndex });
+    }
+    return;
+  }
+  if (onlineRole === "host") {
+    if (index1 !== -1) activateAbility(game.players[0], index1);
+    return;
+  }
+  if (index1 !== -1) {
+    activateAbility(game.players[0], index1);
+    return;
+  }
+  if (index2 !== -1 && game.mode === "duo") activateAbility(game.players[1], index2);
+}
+
+$("onlineBtn").addEventListener("click", async () => {
+  showScreen("onlineMenu");
+  await connectOnlineSocket();
+});
+
+$("createRoomBtn").addEventListener("click", async () => {
+  const connected = await connectOnlineSocket();
+  if (!connected || !onlineSocket?.connected) return;
+  onlineSocket.emit("create-room", result => {
+    if (!result?.success) { setOnlineStatus(result?.error || "Não foi possível criar a sala.", "error"); return; }
+    onlineRoom = result.code;
+    onlineRole = "host";
+    onlineStarted = false;
+    onlinePlayerCount = 1;
+    updateOnlineRoomInfo(1);
+    setOnlineStatus("Sala criada! Envie o código para seu amigo.", "success");
+  });
+});
+
+$("joinRoomBtn").addEventListener("click", async () => {
+  const code = $("roomCodeInput").value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (code.length !== 6) { setOnlineStatus("Digite um código de sala com 6 caracteres.", "error"); return; }
+  const connected = await connectOnlineSocket();
+  if (!connected || !onlineSocket?.connected) return;
+  onlineSocket.emit("join-room", code, result => {
+    if (!result?.success) { setOnlineStatus(result?.error || "Não foi possível entrar na sala.", "error"); return; }
+    onlineRoom = result.code;
+    onlineRole = "guest";
+    onlineStarted = false;
+    onlinePlayerCount = 2;
+    updateOnlineRoomInfo(2);
+    $("startOnlineGameBtn").disabled = true;
+    setOnlineStatus("Entrou na sala! Aguarde o anfitrião iniciar.", "success");
+  });
+});
+
+$("startOnlineGameBtn").addEventListener("click", () => {
+  if (onlineRole !== "host" || onlinePlayerCount !== 2 || !onlineSocket?.connected || onlineStarted) return;
+  onlineSocket.emit("start-game", result => {
+    if (!result?.success) { setOnlineStatus(result?.error || "Não foi possível iniciar a partida.", "error"); return; }
+    onlineStarted = true;
+    startGame("duo");
+    $("modeValue").textContent = "🌐 ONLINE DUO";
+    setOnlineStatus("Partida iniciada! Você controla o Jogador 1.", "success");
+    updateOnlineRoomInfo(2);
+    sendOnlineSnapshot(true);
+  });
+});
+
+$("copyRoomCodeBtn").addEventListener("click", async () => {
+  if (!onlineRoom) return;
+  try {
+    await navigator.clipboard.writeText(onlineRoom);
+    setOnlineStatus("Código copiado! Envie para seu amigo.", "success");
+  } catch (_) {
+    $("roomCodeInput").value = onlineRoom;
+    $("roomCodeInput").select();
+    setOnlineStatus("Selecione e copie o código manualmente.", "");
+  }
+});
+
+$("roomCodeInput").addEventListener("input", () => {
+  $("roomCodeInput").value = $("roomCodeInput").value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+});
+
+$("backOnlineBtn").addEventListener("click", () => {
+  if (onlineSocket) onlineSocket.disconnect();
+  onlineSocket = null;
+  onlineRoom = null;
+  onlineRole = null;
+  onlineStarted = false;
+  onlinePlayerCount = 0;
+  remotePlayerInput = { x: 0, y: 0 };
+  game.state = "menu";
+  updateOnlineRoomInfo(0);
+  showScreen("modeMenu");
+  setOnlineStatus("Desconectado da sala.", "");
+});
+
+// Keep network traffic attached to the existing animation loop.
+const originalLoopForOnline = loop;
+function loop(timestamp) {
+  const dt = Math.min((timestamp - game.lastTime) / 1000 || 0, 0.035);
+  game.lastTime = timestamp;
+  update(dt);
+  if (onlineRole === "guest") sendOnlinePlayerInput();
+  if (onlineRole === "host") sendOnlineSnapshot(false);
+  draw(timestamp / 1000);
+  requestAnimationFrame(loop);
+}
