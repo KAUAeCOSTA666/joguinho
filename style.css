@@ -894,3 +894,13 @@ button.secondary {
   cursor: wait;
   opacity: 0.55;
 }
+#startOnlineGameBtn {
+  margin-top: 12px;
+  border: 1px solid rgba(167, 255, 90, 0.55);
+  background: linear-gradient(110deg, #174d46, #244b29);
+}
+
+#startOnlineGameBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

@@ -21,16 +21,6 @@ app.get("/health", (req, res) => {
 });
 
 io.on("connection", (socket) => {
-  socket.on("start-game", () => {
-  const code = socket.data.roomCode;
-  const room = rooms.get(code);
-
-  if (!room) return;
-  if (room.host !== socket.id) return;
-  if (room.players.length !== 2) return;
-
-  socket.to(code).emit("game-start");
-});
   socket.on("create-room", (callback) => {
     if (typeof callback !== "function") return;
 

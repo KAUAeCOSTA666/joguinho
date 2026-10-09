@@ -1034,8 +1034,11 @@ function getNearestEnemy(x, y) {
 }
 
 function getPlayerInput(player) {
-  const joystick = joystickState[player.id];
+  if (onlineRole === "host" && player.id === 2) {
+    return remotePlayerInput;
+  }
 
+  const joystick = joystickState[player.id];
   if (joystick.x || joystick.y) {
     return { x: joystick.x, y: joystick.y };
   }
@@ -1256,6 +1259,8 @@ function updateHud() {
 }
 
 function update(dt) {
+   // O convidado recebe a simulação do criador da sala.
+  if (onlineRole === "guest") return;
   if (game.toastTimer > 0) {
     game.toastTimer -= dt * 1000;
 
@@ -1610,11 +1615,16 @@ function loop(timestamp) {
   game.lastTime = timestamp;
 
   update(dt);
-  draw(timestamp / 1000);
 
+  if (onlineRole === "guest") {
+    sendOnlinePlayerInput(timestamp);
+  } else {
+    sendOnlineSnapshot(timestamp);
+  }
+
+  draw(timestamp / 1000);
   requestAnimationFrame(loop);
 }
-
 function setupJoystick(id, playerId) {
   const joystick = $(id);
   const knob = joystick.querySelector(".joystick-knob");
@@ -1846,7 +1856,9 @@ let onlineSocket = null;
 let onlineRoom = null;
 let onlineRole = null;
 let onlineRequestPending = false;
-
+let remotePlayerInput = { x: 0, y: 0 };
+let lastOnlineInputAt = 0;
+let lastOnlineSnapshotAt = 0;
 const ONLINE_SERVER_URL = "https://joguinho-ma2q.onrender.com";
 
 function setOnlineStatus(message, type = "") {
@@ -1878,7 +1890,179 @@ function updateOnlineRoomInfo(playerCount) {
       "1/2 jogadores conectados. Aguardando outro jogador...";
   }
 }
+function createOnlineSnapshot() {
+  return {
+    state: game.state,
+    stage: game.stage,
+    bossNumber: game.bossNumber,
+    time: game.time,
+    target: game.target,
+    collected: game.collected,
+    score: game.score,
+    isBoss: game.isBoss,
+    players: game.players,
+    enemies: game.enemies,
+    orbs: game.orbs,
+    particles: game.particles,
+    floatingTexts: game.floatingTexts,
+    boss: game.boss,
+    stageTimer: game.stageTimer,
+    bossAttackTimer: game.bossAttackTimer,
+    enemySpawnTimer: game.enemySpawnTimer,
+    transitionLocked: game.transitionLocked,
+    upgradePlayerId: game.upgradePlayer?.id ?? null,
+    upgradeChoices: game.upgradeChoices.map(choice => ({
+      icon: choice.icon,
+      name: choice.name,
+      description: choice.description,
+      revive: Boolean(choice.revive)
+    })),
+    rouletteNumber: $("rouletteNumber").textContent,
+    rouletteMessage: $("rouletteMessage").textContent,
+    bossTitle: $("bossTitle").textContent,
+    bossCountdown: $("bossCountdown").textContent
+  };
+}
 
+function sendOnlineSnapshot(timestamp) {
+  if (onlineRole !== "host") return;
+  if (!onlineSocket?.connected || !onlineRoom) return;
+  if (!game.players.length || game.state === "menu") return;
+  if (timestamp - lastOnlineSnapshotAt < 60) return;
+
+  lastOnlineSnapshotAt = timestamp;
+  onlineSocket.emit("game-state", createOnlineSnapshot());
+}
+
+function sendOnlinePlayerInput(timestamp) {
+  if (onlineRole !== "guest") return;
+  if (!onlineSocket?.connected || !onlineRoom) return;
+  if (game.state !== "playing") return;
+  if (timestamp - lastOnlineInputAt < 50) return;
+  if (!game.players[1]) return;
+
+  lastOnlineInputAt = timestamp;
+
+  const input = getPlayerInput(game.players[1]);
+
+  onlineSocket.emit("player-input", {
+    x: input.x,
+    y: input.y
+  });
+}
+let guestUpgradeKey = "";
+
+function applyOnlineSnapshot(data) {
+  game.state = data.state;
+  game.stage = data.stage;
+  game.bossNumber = data.bossNumber;
+  game.time = data.time;
+  game.target = data.target;
+  game.collected = data.collected;
+  game.score = data.score;
+  game.isBoss = data.isBoss;
+  game.players = data.players || [];
+  game.enemies = data.enemies || [];
+  game.orbs = data.orbs || [];
+  game.particles = data.particles || [];
+  game.floatingTexts = data.floatingTexts || [];
+  game.boss = data.boss || null;
+  game.stageTimer = data.stageTimer;
+  game.bossAttackTimer = data.bossAttackTimer;
+  game.enemySpawnTimer = data.enemySpawnTimer;
+  game.transitionLocked = data.transitionLocked;
+  game.upgradePlayer = data.upgradePlayerId
+    ? game.players[data.upgradePlayerId - 1]
+    : null;
+
+  game.upgradeChoices = data.upgradeChoices || [];
+
+  $("rouletteNumber").textContent = data.rouletteNumber ?? game.target;
+  $("rouletteMessage").textContent = data.rouletteMessage || "";
+  $("bossTitle").textContent = data.bossTitle || "BOSS INCOMING";
+  $("bossCountdown").textContent = data.bossCountdown ?? "3";
+
+  $("rouletteOverlay").classList.toggle(
+    "show",
+    game.state === "roulette"
+  );
+
+  $("bossOverlay").classList.toggle(
+    "show",
+    game.state === "bossIntro"
+  );
+
+  $("gameOverOverlay").classList.toggle(
+    "show",
+    game.state === "gameover"
+  );
+
+  $("victoryOverlay").classList.toggle(
+    "show",
+    game.state === "victory"
+  );
+
+  const guestMustChoose =
+    game.state === "upgrade" && data.upgradePlayerId === 2;
+
+  $("upgradeOverlay").classList.toggle("show", guestMustChoose);
+
+  if (guestMustChoose) {
+    const key = `${data.upgradePlayerId}:` +
+      game.upgradeChoices.map(choice => choice.name).join("|");
+
+    if (key !== guestUpgradeKey) {
+      guestUpgradeKey = key;
+
+      const container = $("upgradeChoices");
+      container.innerHTML = "";
+
+      game.upgradeChoices.forEach((choice, index) => {
+        const button = document.createElement("button");
+        button.className = "upgrade-choice";
+
+        if (choice.revive) {
+          button.classList.add("revive-choice");
+        }
+
+        button.innerHTML = `
+          <span class="upgrade-icon">${choice.icon}</span>
+          <strong>${choice.name}</strong>
+          <small>${choice.description}</small>
+        `;
+
+        button.addEventListener("click", () => {
+          if (!onlineSocket?.connected) {
+            setOnlineStatus("Conexão perdida. Não foi possível escolher a melhoria.", "error");
+            return;
+          }
+
+          container.querySelectorAll("button").forEach(item => {
+            item.disabled = true;
+          });
+
+          onlineSocket.emit("game-action", {
+            type: "upgrade-choice",
+            index
+          });
+        });
+
+        container.appendChild(button);
+      });
+    }
+  } else {
+    guestUpgradeKey = "";
+  }
+
+  updateHud();
+  updatePlayerPanels();
+
+  if (game.isBoss && game.musicEnabled) {
+    setBossMusic(true);
+  } else if (game.musicEnabled) {
+    setBossMusic(false);
+  }
+}
 function setupOnlineSocket() {
   if (onlineSocket) return onlineSocket;
 
@@ -1915,7 +2099,55 @@ function setupOnlineSocket() {
     if (!data || !onlineRoom || data.code !== onlineRoom) return;
     updateOnlineRoomInfo(data.players);
   });
+onlineSocket.on("game-start", () => {
+  if (onlineRole !== "guest") return;
 
+  startGame("duo");
+  clearGameTimers();
+  hideOverlays();
+
+  game.state = "onlineGuestWaiting";
+  game.lastTime = performance.now();
+  lastOnlineInputAt = 0;
+});
+
+onlineSocket.on("game-state", data => {
+  if (onlineRole !== "guest" || !data) return;
+  applyOnlineSnapshot(data);
+});
+
+onlineSocket.on("player-input", data => {
+  if (onlineRole !== "host" || !data?.input) return;
+
+  remotePlayerInput = {
+    x: clamp(Number(data.input.x) || 0, -1, 1),
+    y: clamp(Number(data.input.y) || 0, -1, 1)
+  };
+});
+
+onlineSocket.on("game-action", data => {
+  if (onlineRole !== "host" || !data?.action) return;
+
+  const action = data.action;
+
+  if (
+    action.type === "ability" &&
+    Number.isInteger(action.index) &&
+    action.index >= 0 &&
+    action.index < ABILITIES.length
+  ) {
+    activateAbility(game.players[1], action.index);
+  }
+
+  if (
+    action.type === "upgrade-choice" &&
+    game.state === "upgrade" &&
+    game.upgradePlayer?.id === 2 &&
+    Number.isInteger(action.index)
+  ) {
+    chooseUpgrade(action.index);
+  }
+});
   onlineSocket.on("player-joined", () => {
     setOnlineStatus("Outro jogador entrou na sala!", "success");
   });
