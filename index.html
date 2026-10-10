@@ -54,8 +54,8 @@
 <div class="menu-card instructions-card">
 <h2>📖 COMO JOGAR</h2>
 <div class="instruction-grid">
-<div><b>🧑 JOGADOR 1</b><span>Movimento: Setas</span><span>Poderes: 1 a 8</span></div>
-<div><b>🧑‍🤝‍🧑 JOGADOR 2</b><span>Movimento: WASD</span><span>Poderes: Q E R T Y U I O</span></div>
+<div><b>🧑 JOGADOR 1</b><span>Movimento: Setas</span><span>Poderes: 1 a 9</span></div>
+<div><b>🧑‍🤝‍🧑 JOGADOR 2</b><span>Movimento: WASD</span><span>Poderes: Q E R T Y U I O P</span></div>
 <div><b>🎯 OBJETIVO</b><span>Alcance o número de orbes da fase antes do tempo acabar.</span></div>
 <div><b>⭐ XP</b><span>A cada 5 níveis você escolhe uma melhoria.</span></div>
 <div><b>👾 BOSS</b><span>A cada 10 fases aparece um boss mais perigoso.</span></div>
@@ -109,9 +109,30 @@
 </aside>
 </div>
 
-<div id="mobileControls">
-<div class="mobile-player-controls" id="mobileP1"><div class="joystick" id="joy1"><div class="stick joystick-knob"></div></div></div>
-<div class="mobile-player-controls hidden-mobile" id="mobileP2"><div class="joystick" id="joy2"><div class="stick joystick-knob"></div></div></div>
+<div id="mobileControls" aria-label="Controles móveis">
+  <div class="mobile-player-controls" id="mobileP1">
+    <div class="mobile-control-title">J1</div>
+    <div class="direction-pad" data-player="1" aria-label="Movimento jogador 1">
+      <button class="dir-btn dir-up" data-dir="up" aria-label="Cima">▲</button>
+      <button class="dir-btn dir-left" data-dir="left" aria-label="Esquerda">◀</button>
+      <button class="dir-btn dir-center" disabled>✦</button>
+      <button class="dir-btn dir-right" data-dir="right" aria-label="Direita">▶</button>
+      <button class="dir-btn dir-down" data-dir="down" aria-label="Baixo">▼</button>
+    </div>
+    <div class="mobile-ability-buttons" id="mobileAbilities1"></div>
+  </div>
+  <div class="mobile-player-controls hidden-mobile" id="mobileP2">
+    <div class="mobile-control-title">J2</div>
+    <div class="direction-pad" data-player="2" aria-label="Movimento jogador 2">
+      <button class="dir-btn dir-up" data-dir="up" aria-label="Cima">▲</button>
+      <button class="dir-btn dir-left" data-dir="left" aria-label="Esquerda">◀</button>
+      <button class="dir-btn dir-center" disabled>✦</button>
+      <button class="dir-btn dir-right" data-dir="right" aria-label="Direita">▶</button>
+      <button class="dir-btn dir-down" data-dir="down" aria-label="Baixo">▼</button>
+    </div>
+    <div class="mobile-ability-buttons" id="mobileAbilities2"></div>
+  </div>
+  <button id="speedLightMobile" class="speedlight-mobile" aria-label="Ativar Speed of Light" title="Speed of Light">☀️ <span>SPEED OF LIGHT</span></button>
 </div>
 </section>
 </div>

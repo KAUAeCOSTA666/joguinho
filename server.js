@@ -79,7 +79,7 @@ io.on("connection", socket => {
     const room = rooms.get(socket.data.roomCode);
     if (!room || socket.data.role !== "guest" || !room.players.includes(socket.id) || !room.started) return;
     if (!action || !["ability", "upgrade-choice"].includes(action.type)) return;
-    if (!Number.isInteger(action.index) || action.index < 0 || action.index > 7) return;
+    if (!Number.isInteger(action.index) || action.index < 0 || action.index > 8) return;
     socket.to(room.code).emit("game-action", { playerId: socket.id, action });
   });
 

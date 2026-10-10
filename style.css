@@ -8,3 +8,77 @@
 @media(max-width:480px){.online-join-row{grid-template-columns:1fr}.online-join-row button{width:100%}}
 
 .stage-toast{position:absolute;left:50%;top:16%;transform:translateX(-50%);padding:10px 18px;border:1px solid rgba(82,234,255,.4);border-radius:12px;background:rgba(4,12,24,.92);color:#eaffff;font-weight:900;text-align:center;pointer-events:none;z-index:30;opacity:0;transition:opacity .15s}.stage-toast.show{opacity:1}.joystick-knob{transform:translate(-50%,-50%)}
+
+
+/* NEON ORBIT — interface polish + touch controls */
+.ability-card{background:rgba(10,20,36,.42);border-color:rgba(160,220,255,.12);backdrop-filter:blur(5px);transition:opacity .18s,border-color .18s,background .18s,transform .18s}
+.ability-card.locked{opacity:.52;filter:saturate(.55)}
+.ability-card.unlocked{opacity:.96;background:linear-gradient(135deg,rgba(22,65,87,.42),rgba(10,20,36,.48));border-color:rgba(72,231,255,.42);box-shadow:inset 0 0 13px rgba(60,225,255,.08)}
+.ability-card.unlocked .ability-icon{filter:drop-shadow(0 0 5px rgba(80,230,255,.55))}
+.ability-card.cooling{opacity:.68}
+.ability-card[role="button"]{cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
+.ability-card[role="button"]:active{transform:scale(.97)}
+.mobile-ability-btn.unlocked{opacity:1;border-color:rgba(74,235,255,.6);background:rgba(24,103,125,.45);box-shadow:0 0 10px rgba(50,220,255,.14)}
+.mobile-ability-btn.locked{opacity:.42;filter:grayscale(.45)}
+.mobile-ability-btn.cooling{opacity:.6}
+#mobileControls{display:none}
+@media(max-width:850px){
+  body{overflow:hidden;overscroll-behavior:none}
+  #gameScreen{height:100dvh;min-height:100dvh;overflow:hidden;padding:6px 6px 164px;box-sizing:border-box;gap:6px}
+  #topHud{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:4px;padding:3px;justify-content:center}
+  .hud-item{padding:5px 6px;font-size:10px}
+  .hud-button{padding:5px 7px;min-width:32px}
+  #gameLayout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto minmax(150px,1fr);gap:5px;min-height:0;flex:1;align-items:stretch;overflow:hidden}
+  #arenaWrap{grid-column:1 / -1;grid-row:1;order:0;width:100%;height:auto;max-height:none;min-height:0;aspect-ratio:1100/600;align-self:start}
+  #gameCanvas{width:100%;height:100%;display:block;object-fit:contain}
+  .player-panel{width:100%;max-height:none;min-height:0;overflow:auto;padding:6px;border-radius:11px;box-sizing:border-box}
+  .p1-panel{grid-column:1;grid-row:2;order:0}
+  .p2-panel{grid-column:2;grid-row:2;order:0;display:block}
+  #playerPanel2.hidden-panel{display:none}
+  #gameScreen.duo #playerPanel2{display:block!important;visibility:visible!important}
+  .player-header{font-size:10px;padding-bottom:4px;margin-bottom:4px;gap:4px}
+  .stat-row,.xp-head{font-size:9px;margin:3px 0}
+  .xp-track{height:5px;margin-bottom:4px}
+  .abilities-title{font-size:9px;margin:4px 0}
+  .ability-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:3px}
+  .ability-card{min-height:35px;padding:4px;border-radius:6px;display:grid;grid-template-columns:auto 1fr;align-items:center;column-gap:3px}
+  .ability-icon{font-size:14px}
+  .ability-name{display:block;font-size:7px;line-height:1.05;overflow-wrap:anywhere}
+  .ability-key{display:none}
+  .ability-cooldown{grid-column:1 / -1;font-size:8px;text-align:center;margin-top:1px}
+  #mobileControls{display:flex;position:fixed;left:0;right:0;bottom:env(safe-area-inset-bottom,0px);height:142px;align-items:flex-end;justify-content:space-between;gap:6px;padding:4px 9px 7px;z-index:100;pointer-events:none;box-sizing:border-box;background:linear-gradient(0deg,rgba(4,9,22,.95),rgba(4,9,22,.62),transparent);}
+  .mobile-player-controls{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;pointer-events:auto}
+  #mobileP1,#mobileP2{width:38%;max-width:190px}
+  .mobile-control-title{font:800 9px Orbitron,sans-serif;color:#a9c4d8;letter-spacing:1px}
+  .direction-pad{width:108px;height:98px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:3px;touch-action:none;user-select:none}
+  .dir-btn{border:1px solid rgba(99,226,255,.48);border-radius:9px;color:#dffbff;background:rgba(20,54,76,.76);font-size:17px;box-shadow:inset 0 0 9px rgba(45,220,255,.1);touch-action:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  .dir-btn:active{background:rgba(42,174,198,.8);transform:scale(.96)}
+  .dir-up{grid-area:1/2}.dir-left{grid-area:2/1}.dir-center{grid-area:2/2;opacity:.4}.dir-right{grid-area:2/3}.dir-down{grid-area:3/2}
+  #mobileP2 .dir-btn{border-color:rgba(177,255,96,.5);background:rgba(42,66,29,.8)}
+  .mobile-ability-buttons{display:flex;flex-wrap:wrap;justify-content:center;gap:3px;max-width:100%}
+  .mobile-ability-btn{width:27px;height:27px;padding:1px;border-radius:7px;border:1px solid rgba(255,255,255,.17);background:rgba(10,23,40,.88);color:white;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;touch-action:manipulation}
+  .mobile-ability-btn span{font-size:13px;line-height:14px}.mobile-ability-btn small{font:7px Orbitron,sans-serif;color:#c6d8e6;line-height:8px}
+  #mobileP2 .mobile-ability-btn.unlocked{border-color:rgba(174,255,93,.65);background:rgba(56,93,27,.6)}
+  .speedlight-mobile{position:absolute;left:50%;bottom:7px;transform:translateX(-50%);pointer-events:auto;display:flex;align-items:center;justify-content:center;gap:5px;min-width:150px;height:32px;border:1px solid rgba(255,224,78,.65);border-radius:99px;background:rgba(70,54,7,.88);color:#ffe96b;font:800 9px Orbitron,sans-serif;box-shadow:0 0 15px rgba(255,220,40,.14);opacity:.45;touch-action:manipulation}
+  .speedlight-mobile.unlocked{opacity:1;background:linear-gradient(90deg,rgba(117,83,0,.94),rgba(73,54,5,.94));box-shadow:0 0 18px rgba(255,221,63,.35)}
+  .speedlight-mobile.charging{animation:lightPulse .45s infinite alternate}
+  .speedlight-mobile:disabled{filter:grayscale(.5)}
+  @keyframes lightPulse{from{box-shadow:0 0 8px rgba(255,220,50,.2)}to{box-shadow:0 0 24px rgba(255,220,50,.8)}}
+  .menu-card{max-height:92dvh;overflow:auto}
+}
+@media(max-width:430px){
+  #gameScreen{padding-bottom:162px}
+  #topHud .hud-item{font-size:9px;padding:4px 5px}
+  #gameLayout{grid-template-rows:auto minmax(128px,1fr)}
+  .player-panel{padding:4px}
+  .ability-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .ability-card{min-height:31px;padding:3px}
+  .ability-name{font-size:6.5px}
+  .direction-pad{width:94px;height:86px}
+  .dir-btn{font-size:15px}
+  .mobile-ability-btn{width:24px;height:25px}
+  .mobile-ability-btn span{font-size:12px}
+  #mobileControls{height:138px;padding-left:4px;padding-right:4px}
+  #mobileP1,#mobileP2{width:39%}
+  .speedlight-mobile{min-width:136px;font-size:8px;height:29px}
+}

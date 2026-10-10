@@ -7,6 +7,19 @@ const W = canvas.width;
 const H = canvas.height;
 const $ = id => document.getElementById(id);
 
+// Declare online state before startup functions use it. Otherwise the
+// initial resetPlayerPanels()/updatePlayerPanels() calls hit the let TDZ.
+const ONLINE_SERVER_URL = "https://joguinho-ma2q.onrender.com";
+let onlineSocket = null;
+let onlineRoom = null;
+let onlineRole = null;
+let onlinePlayerCount = 0;
+let onlineStarted = false;
+let remotePlayerInput = { x: 0, y: 0 };
+let lastOnlineInputAt = 0;
+let lastOnlineSnapshotAt = 0;
+let lastOnlineUiState = "";
+
 const screens = ["mainMenu", "modeMenu", "onlineMenu", "instructionsMenu", "gameScreen"];
 const overlays = ["rouletteOverlay", "bossOverlay", "upgradeOverlay", "gameOverOverlay", "victoryOverlay"];
 
@@ -18,7 +31,8 @@ const ABILITIES = [
   { name: "Velocidade", icon: "⚡", key1: "5", key2: "Y", cooldown: 14, duration: 6 },
   { name: "Escudo", icon: "🛡️", key1: "6", key2: "U", cooldown: 18, duration: 8 },
   { name: "Cura", icon: "💚", key1: "7", key2: "I", cooldown: 20, duration: 0 },
-  { name: "Explosão", icon: "💥", key1: "8", key2: "O", cooldown: 24, duration: 0 }
+  { name: "Explosão", icon: "💥", key1: "8", key2: "O", cooldown: 24, duration: 0 },
+  { name: "Speed of Light", icon: "☀️", key1: "9", key2: "P", cooldown: 42, duration: 0 }
 ];
 
 const ORB_XP = 25;
@@ -123,7 +137,7 @@ function showToast(message, duration = 1500) {
 }
 
 function createPlayer(id, x, y) {
-  const abilities = Array(8).fill(false);
+  const abilities = Array(ABILITIES.length).fill(false);
   abilities[1] = true;
 
   return {
@@ -145,10 +159,14 @@ function createPlayer(id, x, y) {
     invisible: 0,
     ice: 0,
     speedBoost: 0,
+    speedLightCharge: 0,
+    speedLightActive: false,
+    speedLightRound: 0,
+    speedLightTimer: 0,
     hitCooldown: 0,
     abilities,
-    cooldowns: Array(8).fill(0),
-    abilityTimers: Array(8).fill(0),
+    cooldowns: Array(ABILITIES.length).fill(0),
+    abilityTimers: Array(ABILITIES.length).fill(0),
     input: { x: 0, y: 0 },
     alive: true,
     totalCollected: 0
@@ -160,10 +178,15 @@ function activePlayers() {
 }
 
 function resetPlayerPanels() {
+  const duo = game.mode === "duo";
+  $("playerPanel1").classList.toggle("hidden-panel", false);
+  $("playerPanel2").classList.toggle("hidden-panel", !duo);
   $("playerPanel1").style.display = "";
-  $("playerPanel2").style.display = game.mode === "duo" ? "" : "none";
-  $("gameScreen").classList.toggle("duo", game.mode === "duo");
-  $("mobileP2").classList.toggle("hidden-mobile", game.mode !== "duo");
+  $("playerPanel2").style.display = duo ? "" : "none";
+  $("gameScreen").classList.toggle("duo", duo);
+  // In online mode, the guest only needs the Player 2 touch controls.
+  $("mobileP1").classList.toggle("hidden-mobile", onlineRole === "guest");
+  $("mobileP2").classList.toggle("hidden-mobile", !duo || onlineRole === "host");
 }
 
 function buildAbilityPanels() {
@@ -181,9 +204,47 @@ function buildAbilityPanels() {
         <span class="ability-key">${playerId === 1 ? ability.key1 : ability.key2}</span>
         <span class="ability-cooldown"></span>
       `;
+      card.setAttribute("role", "button");
+      card.setAttribute("tabindex", "0");
+      card.setAttribute("aria-label", `${ability.name}, ${playerId === 1 ? ability.key1 : ability.key2}`);
+      card.addEventListener("click", () => activateFromTouch(playerId, index));
+      card.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activateFromTouch(playerId, index); } });
       container.appendChild(card);
     });
   }
+  buildMobileAbilityButtons();
+}
+
+function buildMobileAbilityButtons() {
+  for (const playerId of [1, 2]) {
+    const holder = $(`mobileAbilities${playerId}`);
+    if (!holder) continue;
+    holder.innerHTML = "";
+    ABILITIES.forEach((ability, index) => {
+      if (index === 8) return; // Speed of Light has its own centered button below the arena.
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "mobile-ability-btn locked";
+      button.dataset.player = String(playerId);
+      button.dataset.ability = String(index);
+      button.title = `${ability.name} (${playerId === 1 ? ability.key1 : ability.key2})`;
+      button.innerHTML = `<span>${ability.icon}</span><small>${playerId === 1 ? ability.key1 : ability.key2}</small>`;
+      button.addEventListener("click", () => activateFromTouch(playerId, index));
+      holder.appendChild(button);
+    });
+  }
+}
+
+function activateFromTouch(playerId, index) {
+  if (onlineRole === "guest") {
+    const mappedIndex = index;
+    if (playerId === 2 && onlineSocket?.connected && onlineStarted) onlineSocket.emit("game-action", { type: "ability", index: mappedIndex });
+    else if (onlineSocket?.connected && onlineStarted) onlineSocket.emit("game-action", { type: "ability", index: mappedIndex });
+    return;
+  }
+  if (onlineRole === "host" && playerId === 2) return;
+  const player = game.players[playerId - 1];
+  activateAbility(player, index);
 }
 
 function updatePlayerPanels() {
@@ -209,7 +270,22 @@ function updatePlayerPanels() {
       cooldown.textContent = player.cooldowns[index] > 0
         ? player.cooldowns[index].toFixed(1)
         : "";
+      const mobileButton = document.querySelector(`.mobile-ability-btn[data-player="${id}"][data-ability="${index}"]`);
+      if (mobileButton) {
+        mobileButton.classList.toggle("unlocked", !!player.abilities[index]);
+        mobileButton.classList.toggle("locked", !player.abilities[index]);
+        mobileButton.classList.toggle("cooling", player.cooldowns[index] > 0);
+        mobileButton.disabled = !player.abilities[index] || player.cooldowns[index] > 0 || !player.alive;
+      }
     });
+  }
+  const mobileSpecial = $("speedLightMobile");
+  if (mobileSpecial) {
+    const controlled = onlineRole === "guest" ? game.players[1] : game.players[0];
+    const ready = !!controlled?.abilities?.[8] && (controlled.cooldowns[8] || 0) <= 0 && controlled.alive;
+    mobileSpecial.disabled = !ready;
+    mobileSpecial.classList.toggle("unlocked", ready);
+    mobileSpecial.classList.toggle("charging", (controlled?.speedLightCharge || 0) > 0);
   }
 }
 
@@ -971,6 +1047,16 @@ function activateAbility(player, index) {
 
     game.enemies = game.enemies.filter(enemy => !enemy.dead);
     player.cooldowns[index] = cooldown;
+  } else if (index === 8) {
+    player.speedLightCharge = 3;
+    player.speedLightActive = false;
+    player.speedLightRound = 0;
+    player.speedLightTimer = 0;
+    player.cooldowns[index] = cooldown;
+    for (let i = 0; i < 34; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      game.particles.push({ x: player.x, y: player.y, vx: Math.cos(angle) * rand(20, 80), vy: Math.sin(angle) * rand(20, 80), life: rand(0.4, 1.2), maxLife: 1.2, size: rand(2, 4), color: "#ffe45c" });
+    }
   }
 
   if (ability.duration > 0 && index !== 1) {
@@ -1078,6 +1164,59 @@ function updatePlayer(player, dt) {
   player.ice = Math.max(0, player.ice - dt);
   player.speedBoost = Math.max(0, player.speedBoost - dt);
 
+  if (player.speedLightCharge > 0) {
+    player.speedLightCharge = Math.max(0, player.speedLightCharge - dt);
+    for (let i = 0; i < 2; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      game.particles.push({ x: player.x + Math.cos(angle) * rand(8, 30), y: player.y + Math.sin(angle) * rand(8, 30), vx: -Math.cos(angle) * 22, vy: -Math.sin(angle) * 22, life: 0.32, maxLife: 0.32, size: rand(2, 3.5), color: "#ffe45c" });
+    }
+    if (player.speedLightCharge <= 0) {
+      player.speedLightActive = true;
+      player.speedLightRound = 0;
+      player.speedLightTimer = 0;
+      player.shield = Math.max(player.shield, 3.2);
+      showToast("☀️ SPEED OF LIGHT!", 1200);
+    }
+  }
+  if (player.speedLightActive) {
+    player.speedLightTimer += dt;
+    const lane = Math.min(4, player.speedLightRound);
+    const targetX = lane % 2 === 0 ? W - player.r : player.r;
+    const targetY = clamp(70 + lane * ((H - 140) / 4), player.r, H - player.r);
+    const dx = targetX - player.x;
+    const dy = targetY - player.y;
+    const d = Math.hypot(dx, dy);
+    const speed = 1900;
+    if (d > 2) {
+      player.x += dx / d * Math.min(d, speed * dt);
+      player.y += dy / d * Math.min(d, speed * dt);
+    }
+    // The light trail magnetizes nearby orbs and collects them on every pass.
+    for (const orb of game.orbs) {
+      if (orb.collected) continue;
+      const od = distance(player.x, player.y, orb.x, orb.y);
+      if (od < 92) {
+        orb.x += (player.x - orb.x) * Math.min(1, dt * 14);
+        orb.y += (player.y - orb.y) * Math.min(1, dt * 14);
+        if (distance(player.x, player.y, orb.x, orb.y) < player.r + orb.r + 10) collectOrb(orb, player);
+      }
+    }
+    if (d <= 3 || player.speedLightTimer > 0.55) {
+      player.speedLightRound++;
+      player.speedLightTimer = 0;
+      if (player.speedLightRound >= 5) {
+        player.speedLightActive = false;
+        player.speedLightRound = 0;
+        player.shield = Math.max(player.shield, 0.35);
+      }
+    }
+    player.x = clamp(player.x, player.r, W - player.r);
+    player.y = clamp(player.y, player.r, H - player.r);
+    spawnDashParticles(player);
+    updatePlayerPanels();
+    return;
+  }
+
   if (player.abilityTimers[2] > 0) {
     player.abilityTimers[2] = Math.max(0, player.abilityTimers[2] - dt);
 
@@ -1124,7 +1263,9 @@ function damagePlayer(player) {
     !player.alive ||
     player.hitCooldown > 0 ||
     player.shield > 0 ||
-    player.invisible > 0
+    player.invisible > 0 ||
+    player.speedLightCharge > 0 ||
+    player.speedLightActive
   ) return;
 
   player.health--;
@@ -1442,6 +1583,22 @@ function drawPlayer(player, time) {
     ctx.stroke();
   }
 
+  if (player.speedLightCharge > 0 || player.speedLightActive) {
+    ctx.strokeStyle = "#ffe45c";
+    ctx.lineWidth = player.speedLightActive ? 4 : 2;
+    ctx.shadowColor = "#ffe45c";
+    ctx.shadowBlur = 24;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.r + 12 + Math.sin(time * 18) * 4, 0, Math.PI * 2);
+    ctx.stroke();
+    if (player.speedLightCharge > 0) {
+      ctx.fillStyle = "#ffe45c";
+      ctx.font = "bold 12px Orbitron, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(`${player.speedLightCharge.toFixed(1)}s`, player.x, player.y - 34);
+    }
+  }
+
   if (player.speedBoost > 0) {
     ctx.strokeStyle = "rgba(255,255,255,0.55)";
     ctx.lineWidth = 2;
@@ -1676,6 +1833,41 @@ function setupJoystick(id, playerId) {
   joystick.addEventListener("lostpointercapture", end);
 }
 
+function setupDirectionPads() {
+  document.querySelectorAll(".direction-pad").forEach(pad => {
+    const playerId = Number(pad.dataset.player);
+    pad.querySelectorAll(".dir-btn[data-dir]").forEach(button => {
+      const dir = button.dataset.dir;
+      const setDirection = (pressed) => {
+        const state = joystickState[playerId];
+        if (dir === "left") state.x = pressed ? -1 : (state.x < 0 ? 0 : state.x);
+        if (dir === "right") state.x = pressed ? 1 : (state.x > 0 ? 0 : state.x);
+        if (dir === "up") state.y = pressed ? -1 : (state.y < 0 ? 0 : state.y);
+        if (dir === "down") state.y = pressed ? 1 : (state.y > 0 ? 0 : state.y);
+      };
+      button.addEventListener("pointerdown", event => { event.preventDefault(); button.setPointerCapture?.(event.pointerId); setDirection(true); });
+      const release = event => { event.preventDefault?.(); setDirection(false); };
+      button.addEventListener("pointerup", release);
+      button.addEventListener("pointercancel", release);
+      button.addEventListener("lostpointercapture", release);
+      button.addEventListener("contextmenu", event => event.preventDefault());
+    });
+  });
+}
+
+function setupMobileSpecial() {
+  const button = $("speedLightMobile");
+  if (!button) return;
+  button.addEventListener("click", () => {
+    const player = onlineRole === "guest" ? game.players[1] : game.players[0];
+    if (!player?.abilities?.[8] || (player.cooldowns[8] || 0) > 0) return;
+    if (onlineRole === "guest") {
+      if (onlineSocket?.connected && onlineStarted) onlineSocket.emit("game-action", { type: "ability", index: 8 });
+    } else if (onlineRole !== "host") activateAbility(player, 8);
+    else activateAbility(player, 8);
+  });
+}
+
 function resetJoysticks() {
   for (const id of [1, 2]) {
     joystickState[id].x = 0;
@@ -1693,8 +1885,8 @@ function resetJoysticks() {
 
 function handleAbilityKey(key) {
   const normalized = key.length === 1 ? key.toLowerCase() : key;
-  const keys1 = ["1", "2", "3", "4", "5", "6", "7", "8"];
-  const keys2 = ["q", "e", "r", "t", "y", "u", "i", "o"];
+  const keys1 = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+  const keys2 = ["q", "e", "r", "t", "y", "u", "i", "o", "p"];
 
   const index1 = keys1.indexOf(normalized);
 
@@ -1892,8 +2084,8 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-setupJoystick("joy1", 1);
-setupJoystick("joy2", 2);
+setupDirectionPads();
+setupMobileSpecial();
 buildAbilityPanels();
 updatePlayerPanels();
 resetPlayerPanels();
@@ -1905,16 +2097,6 @@ requestAnimationFrame(timestamp => {
 
 
 // ================= MULTIPLAYER ONLINE =================
-const ONLINE_SERVER_URL = "https://joguinho-ma2q.onrender.com";
-let onlineSocket = null;
-let onlineRoom = null;
-let onlineRole = null;
-let onlinePlayerCount = 0;
-let onlineStarted = false;
-let remotePlayerInput = { x: 0, y: 0 };
-let lastOnlineInputAt = 0;
-let lastOnlineSnapshotAt = 0;
-let lastOnlineUiState = "";
 
 function setOnlineStatus(message, kind = "") {
   const el = $("onlineStatus");
@@ -2018,7 +2200,7 @@ function connectOnlineSocket() {
       const action = packet.action;
       if (action.type === "ability") {
         const player = game.players[1];
-        if (player && Number.isInteger(action.index) && action.index >= 0 && action.index < 8) activateAbility(player, action.index);
+        if (player && Number.isInteger(action.index) && action.index >= 0 && action.index < ABILITIES.length) activateAbility(player, action.index);
       } else if (action.type === "upgrade-choice" && game.state === "upgrade" && game.upgradePlayer?.id === 2) {
         chooseUpgrade(Number(action.index));
       }
@@ -2068,7 +2250,7 @@ function sendOnlinePlayerInput() {
   const now = performance.now();
   if (now - lastOnlineInputAt < 35) return;
   lastOnlineInputAt = now;
-  const input = getPlayerInput({ id: 1 });
+  const input = getPlayerInput({ id: 2 });
   onlineSocket.emit("player-input", input);
 }
 
@@ -2141,8 +2323,8 @@ function renderRemoteUpgradeChoices(choices) {
 
 function handleAbilityKey(key) {
   const normalized = key.length === 1 ? key.toLowerCase() : key;
-  const keys1 = ["1", "2", "3", "4", "5", "6", "7", "8"];
-  const keys2 = ["q", "e", "r", "t", "y", "u", "i", "o"];
+  const keys1 = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+  const keys2 = ["q", "e", "r", "t", "y", "u", "i", "o", "p"];
   const index1 = keys1.indexOf(normalized);
   const index2 = keys2.indexOf(normalized);
   if (onlineRole === "guest") {
