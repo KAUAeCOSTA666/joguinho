@@ -289,7 +289,25 @@ function updatePlayerPanels() {
   }
 }
 
+async function requestLandscapeMode() {
+  document.body.classList.add("landscape-mode");
+  try {
+    if (window.matchMedia("(max-width: 850px)").matches) {
+      const target = document.documentElement;
+      if (!document.fullscreenElement && target.requestFullscreen) {
+        await target.requestFullscreen().catch(() => {});
+      }
+      if (screen.orientation && typeof screen.orientation.lock === "function") {
+        await screen.orientation.lock("landscape").catch(() => {});
+      }
+    }
+  } catch (_) {
+    // CSS fallback rotates the game if the browser does not allow orientation lock.
+  }
+}
+
 function startGame(mode) {
+  requestLandscapeMode();
   clearGameTimers();
   hideOverlays();
   stopMusic();
@@ -335,6 +353,9 @@ function startGame(mode) {
 }
 
 function returnToMenu() {
+  document.body.classList.remove("landscape-mode");
+  if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+  if (screen.orientation && screen.orientation.unlock) { try { screen.orientation.unlock(); } catch (_) {} }
   if (onlineSocket) { try { onlineSocket.disconnect(); } catch (_) {} onlineSocket = null; }
   onlineRoom = null; onlineRole = null; onlineStarted = false; onlinePlayerCount = 0; remotePlayerInput = { x: 0, y: 0 };
   clearGameTimers();
@@ -867,7 +888,7 @@ function createUpgradeChoices(player) {
       apply: () => {
         const locked = player.abilities
           .map((unlocked, index) => ({ unlocked, index }))
-          .filter(item => !item.unlocked);
+          .filter(item => !item.unlocked && item.index !== 8);
 
         if (locked.length) {
           const selected = locked[randInt(0, locked.length - 1)];
@@ -879,6 +900,16 @@ function createUpgradeChoices(player) {
       }
     }
   ];
+
+  // Speed of Light is a dedicated, guaranteed level-up choice until unlocked.
+  // It cannot be obtained accidentally through the generic random-ability upgrade.
+  const speedLightUpgrade = !player.abilities[8] ? {
+    icon: "☀️",
+    name: "Speed of Light",
+    description: "Desbloqueia o poder especial Speed of Light",
+    dedicatedAbility: 8,
+    apply: () => { player.abilities[8] = true; }
+  } : null;
 
   const deadPartner = game.mode === "duo"
     ? game.players.find(other => other.id !== player.id && !other.alive)
@@ -899,6 +930,10 @@ function createUpgradeChoices(player) {
     [upgrades[i], upgrades[j]] = [upgrades[j], upgrades[i]];
   }
 
+  if (speedLightUpgrade) {
+    // Always show the dedicated power as one of the three choices.
+    return [speedLightUpgrade, ...upgrades.slice(0, 2)];
+  }
   return upgrades.slice(0, 3);
 }
 
