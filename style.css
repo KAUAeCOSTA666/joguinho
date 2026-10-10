@@ -82,3 +82,154 @@
   #mobileP1,#mobileP2{width:39%}
   .speedlight-mobile{min-width:136px;font-size:8px;height:29px}
 }
+
+
+/* Mobile landscape play: powers on the left, movement on the right. */
+@media (max-width: 850px) and (orientation: landscape) {
+  body.landscape-mode { overflow: hidden; }
+  body.landscape-mode #gameScreen {
+    height: 100dvh; min-height: 100dvh; overflow: hidden;
+    padding: 5px 6px 6px; gap: 4px;
+  }
+  body.landscape-mode #topHud { flex-wrap: nowrap; justify-content: center; gap: 5px; padding: 2px; }
+  body.landscape-mode .hud-item { font-size: 10px; padding: 4px 6px; }
+  body.landscape-mode #gameLayout {
+    display: grid; grid-template-columns: minmax(105px, 18vw) minmax(0, 1fr) minmax(105px, 18vw);
+    grid-template-rows: minmax(0, 1fr); gap: 6px; min-height: 0; flex: 1;
+  }
+  body.landscape-mode .player-panel { grid-row: 1; width: auto; max-height: 100%; overflow: auto; padding: 5px; }
+  body.landscape-mode .p1-panel { grid-column: 1; grid-row: 1; }
+  body.landscape-mode .p2-panel { grid-column: 3; grid-row: 1; }
+  body.landscape-mode #arenaWrap { grid-column: 2; grid-row: 1; order: initial; width: 100%; height: 100%; min-height: 0; max-height: none; }
+  body.landscape-mode #gameCanvas { width: 100%; height: 100%; object-fit: contain; }
+  body.landscape-mode .ability-grid { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 3px; }
+  body.landscape-mode .ability-card { min-height: 29px; padding: 3px; }
+  body.landscape-mode .ability-name { display: block; font-size: 7px; }
+  body.landscape-mode #mobileControls {
+    position: fixed; inset: 0; height: auto; padding: 0; background: none;
+    display: block; pointer-events: none; z-index: 200;
+  }
+  body.landscape-mode .mobile-player-controls { display: block; position: static; width: auto; }
+  body.landscape-mode .mobile-control-title { display: none; }
+  body.landscape-mode .direction-pad {
+    position: fixed; right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom));
+    width: 112px; height: 100px; gap: 3px; pointer-events: auto;
+  }
+  body.landscape-mode .mobile-ability-buttons {
+    position: fixed; left: max(8px, env(safe-area-inset-left)); bottom: max(12px, env(safe-area-inset-bottom));
+    width: min(38vw, 210px); display: grid; grid-template-columns: repeat(4, minmax(24px, 1fr));
+    gap: 4px; pointer-events: auto; justify-items: stretch;
+  }
+  body.landscape-mode .mobile-ability-btn { width: 100%; height: 31px; }
+  body.landscape-mode .speedlight-mobile {
+    position: fixed; left: 50%; bottom: max(7px, env(safe-area-inset-bottom));
+    transform: translateX(-50%); min-width: 130px; height: 28px; z-index: 201;
+  }
+}
+
+/* Fallback for mobile browsers that refuse the Screen Orientation API:
+   rotate the game UI to landscape after a player starts a match. */
+@media (max-width: 850px) and (orientation: portrait) {
+  body.landscape-mode #app {
+    position: fixed; top: 0; left: 100vw;
+    width: 100dvh; height: 100vw; overflow: hidden;
+    transform: rotate(90deg); transform-origin: top left;
+  }
+  body.landscape-mode #gameScreen {
+    width: 100%; height: 100%; min-height: 0; overflow: hidden;
+    padding: 5px 6px 6px; gap: 4px; box-sizing: border-box;
+  }
+  body.landscape-mode #topHud { flex-wrap: nowrap; justify-content: center; gap: 4px; padding: 2px; }
+  body.landscape-mode .hud-item { font-size: 9px; padding: 4px 5px; }
+  body.landscape-mode #gameLayout {
+    display: grid; grid-template-columns: minmax(95px, 18vw) minmax(0,1fr) minmax(95px,18vw);
+    grid-template-rows: minmax(0,1fr); gap: 5px; min-height: 0; flex: 1;
+  }
+  body.landscape-mode .player-panel { grid-row: 1; width: auto; max-height: 100%; overflow: auto; padding: 4px; }
+  body.landscape-mode .p1-panel { grid-column: 1; grid-row: 1; }
+  body.landscape-mode .p2-panel { grid-column: 3; grid-row: 1; }
+  body.landscape-mode #arenaWrap { grid-column: 2; grid-row: 1; width: 100%; height: 100%; min-height: 0; max-height: none; }
+  body.landscape-mode #gameCanvas { width: 100%; height: 100%; object-fit: contain; }
+  body.landscape-mode .ability-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 2px; }
+  body.landscape-mode .ability-card { min-height: 25px; padding: 2px; }
+  body.landscape-mode .ability-name { display: block; font-size: 6px; }
+  body.landscape-mode #mobileControls { position: fixed; inset: 0; height: auto; padding: 0; background: none; display: block; pointer-events: none; }
+  body.landscape-mode .mobile-control-title { display: none; }
+  body.landscape-mode .direction-pad { position: fixed; right: 12px; bottom: 12px; width: 100px; height: 90px; pointer-events: auto; }
+  body.landscape-mode .mobile-ability-buttons { position: fixed; left: 7px; bottom: 12px; width: 35vw; display: grid; grid-template-columns: repeat(4,minmax(22px,1fr)); gap: 3px; pointer-events: auto; }
+  body.landscape-mode .mobile-ability-btn { width: 100%; height: 27px; }
+  body.landscape-mode .speedlight-mobile { position: fixed; left: 50%; bottom: 7px; transform: translateX(-50%); min-width: 118px; height: 25px; font-size: 7px; }
+}
+
+
+/* FIX: touch controls must remain visible on wide landscape mobile viewports. */
+@media (orientation: landscape) and (pointer: coarse) {
+  #mobileControls,
+  body.landscape-mode #mobileControls {
+    display: flex !important;
+    position: fixed !important;
+    inset: 0 !important;
+    height: auto !important;
+    padding: 0 !important;
+    background: none !important;
+    justify-content: space-between !important;
+    align-items: stretch !important;
+    pointer-events: none !important;
+    z-index: 1000 !important;
+  }
+  #mobileP1, #mobileP2,
+  body.landscape-mode #mobileP1,
+  body.landscape-mode #mobileP2 {
+    display: block !important;
+    position: static !important;
+    width: auto !important;
+    margin: 0 !important;
+    pointer-events: none !important;
+  }
+  .direction-pad,
+  body.landscape-mode .direction-pad {
+    position: fixed !important;
+    right: max(12px, env(safe-area-inset-right)) !important;
+    bottom: max(12px, env(safe-area-inset-bottom)) !important;
+    width: clamp(88px, 15vw, 120px) !important;
+    height: clamp(80px, 14vw, 110px) !important;
+    display: grid !important;
+    pointer-events: auto !important;
+    z-index: 1001 !important;
+  }
+  .mobile-ability-buttons,
+  body.landscape-mode .mobile-ability-buttons {
+    position: fixed !important;
+    left: max(8px, env(safe-area-inset-left)) !important;
+    bottom: max(10px, env(safe-area-inset-bottom)) !important;
+    width: min(38vw, 340px) !important;
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(24px, 1fr)) !important;
+    gap: 4px !important;
+    pointer-events: auto !important;
+    z-index: 1001 !important;
+  }
+  .mobile-ability-btn,
+  body.landscape-mode .mobile-ability-btn {
+    display: flex !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: clamp(28px, 5.5vh, 42px) !important;
+    margin: 0 !important;
+    padding: 2px !important;
+    font-size: clamp(10px, 1.5vw, 14px) !important;
+    align-items: center !important;
+    justify-content: center !important;
+    pointer-events: auto !important;
+  }
+  #speedLightMobile,
+  body.landscape-mode #speedLightMobile {
+    display: flex !important;
+    position: fixed !important;
+    left: 50% !important;
+    bottom: max(7px, env(safe-area-inset-bottom)) !important;
+    transform: translateX(-50%) !important;
+    z-index: 1002 !important;
+    pointer-events: auto !important;
+  }
+}
