@@ -233,3 +233,152 @@
     pointer-events: auto !important;
   }
 }
+
+
+/* FINAL MOBILE LANDSCAPE LAYOUT: controls sit at the bottom without the
+   Speed of Light button covering the ability row. */
+@media (orientation: landscape) and (pointer: coarse) {
+  #mobileControls { display:block !important; }
+  #mobileP1, #mobileP2 { display:block !important; }
+  .direction-pad,
+  body.landscape-mode .direction-pad {
+    right: max(8px, env(safe-area-inset-right)) !important;
+    bottom: max(6px, env(safe-area-inset-bottom)) !important;
+    width: clamp(88px, 13vw, 112px) !important;
+    height: clamp(76px, 12vw, 96px) !important;
+    grid-template-areas: ". up ." "left center right" ". down ." !important;
+  }
+  .mobile-ability-buttons,
+  body.landscape-mode .mobile-ability-buttons {
+    left: max(8px, env(safe-area-inset-left)) !important;
+    bottom: max(6px, env(safe-area-inset-bottom)) !important;
+    width: min(42vw, 360px) !important;
+    grid-template-columns: repeat(4, minmax(28px, 1fr)) !important;
+    gap: 4px !important;
+  }
+  .mobile-ability-btn,
+  body.landscape-mode .mobile-ability-btn {
+    height: clamp(30px, 6vh, 42px) !important;
+  }
+  #speedLightMobile,
+  body.landscape-mode #speedLightMobile,
+  .speedlight-mobile {
+    position: fixed !important;
+    left: 50% !important;
+    right: auto !important;
+    bottom: max(7px, env(safe-area-inset-bottom)) !important;
+    transform: translateX(-50%) !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 22vw !important;
+    height: clamp(32px, 6vh, 42px) !important;
+    padding: 4px 8px !important;
+    white-space: nowrap !important;
+    font-size: clamp(9px, 1.25vw, 12px) !important;
+    z-index: 1003 !important;
+    pointer-events: auto !important;
+  }
+  #speedLightMobile span { display:inline !important; }
+}
+
+/* NEON ORBIT — compact landscape layout (mobile + online-safe) */
+@media (orientation: landscape) and (pointer: coarse) {
+  html, body { width:100%; height:100%; overflow:hidden !important; }
+  #gameScreen {
+    width:100vw !important; height:100dvh !important; min-height:0 !important;
+    overflow:hidden !important; padding:3px 4px 4px !important; gap:3px !important;
+  }
+  #topHud {
+    flex:0 0 auto !important; height:25px !important; min-height:25px !important;
+    flex-wrap:nowrap !important; gap:3px !important; overflow:hidden !important;
+  }
+  .hud-item { font-size:8px !important; padding:3px 4px !important; border-radius:6px !important; }
+  .hud-button { font-size:8px !important; padding:3px 5px !important; }
+  #gameLayout {
+    display:grid !important;
+    grid-template-columns:clamp(70px, 11vw, 112px) minmax(0,1fr) clamp(70px, 11vw, 112px) !important;
+    grid-template-rows:minmax(0,1fr) !important;
+    gap:4px !important; min-height:0 !important; flex:1 1 auto !important;
+    height:calc(100dvh - 31px) !important; align-items:stretch !important;
+  }
+  .player-panel {
+    display:block !important; min-width:0 !important; width:auto !important;
+    max-height:100% !important; min-height:0 !important; overflow:hidden !important;
+    padding:3px !important; border-radius:7px !important;
+  }
+  #playerPanel1 { grid-column:1 !important; grid-row:1 !important; }
+  #playerPanel2 { grid-column:3 !important; grid-row:1 !important; }
+  #playerPanel2.hidden-panel { display:none !important; }
+  .player-header { font-size:8px !important; gap:2px !important; padding-bottom:3px !important; margin-bottom:3px !important; }
+  .stat-row, .xp-head { font-size:7px !important; margin:2px 0 !important; gap:2px !important; }
+  .xp-track { height:4px !important; margin-bottom:3px !important; }
+  .abilities-title { font-size:7px !important; margin:3px 0 !important; }
+  .ability-grid { grid-template-columns:1fr !important; gap:2px !important; }
+  .ability-card { min-height:21px !important; padding:2px !important; border-radius:4px !important; }
+  .ability-icon { font-size:10px !important; }
+  .ability-name { display:block !important; font-size:6px !important; line-height:1 !important; }
+  .ability-key, .ability-cd { display:none !important; }
+  #arenaWrap {
+    grid-column:2 !important; grid-row:1 !important; order:0 !important;
+    width:100% !important; height:100% !important; max-height:100% !important;
+    min-height:0 !important; aspect-ratio:auto !important;
+  }
+  #gameCanvas { width:100% !important; height:100% !important; max-width:none !important; object-fit:contain !important; border-radius:7px !important; }
+
+  #mobileControls {
+    display:block !important; position:fixed !important; inset:0 !important;
+    width:100vw !important; height:100dvh !important; padding:0 !important;
+    margin:0 !important; background:none !important; pointer-events:none !important;
+    z-index:1000 !important; overflow:visible !important;
+  }
+  #mobileP1, #mobileP2 {
+    display:contents !important; position:static !important; width:auto !important;
+    margin:0 !important; padding:0 !important; pointer-events:none !important;
+  }
+  #mobileP1.hidden-mobile, #mobileP2.hidden-mobile { display:none !important; }
+  .mobile-control-title { display:none !important; }
+  .direction-pad {
+    position:fixed !important; right:max(7px, env(safe-area-inset-right)) !important;
+    bottom:max(7px, env(safe-area-inset-bottom)) !important;
+    width:clamp(76px, 11vw, 92px) !important; height:clamp(68px, 12vh, 82px) !important;
+    display:grid !important; grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+    grid-template-rows:repeat(3,minmax(0,1fr)) !important; gap:2px !important;
+    pointer-events:auto !important; z-index:1002 !important;
+  }
+  .dir-btn {
+    width:100% !important; height:100% !important; min-width:0 !important;
+    margin:0 !important; padding:0 !important; font-size:13px !important;
+    border-radius:6px !important; touch-action:none !important;
+  }
+  .mobile-ability-buttons {
+    position:fixed !important; left:max(7px, env(safe-area-inset-left)) !important;
+    bottom:max(7px, env(safe-area-inset-bottom)) !important;
+    width:min(34vw, 245px) !important; display:grid !important;
+    grid-template-columns:repeat(4,minmax(0,1fr)) !important; gap:3px !important;
+    pointer-events:auto !important; z-index:1002 !important;
+  }
+  .mobile-ability-btn {
+    width:100% !important; min-width:0 !important; height:clamp(23px, 4.8vh, 30px) !important;
+    margin:0 !important; padding:1px !important; border-radius:5px !important;
+    font-size:9px !important; pointer-events:auto !important;
+  }
+  .mobile-ability-btn span { font-size:11px !important; line-height:11px !important; }
+  .mobile-ability-btn small { font-size:6px !important; line-height:6px !important; }
+  #speedLightMobile {
+    display:flex !important; position:fixed !important; left:50% !important;
+    bottom:max(7px, env(safe-area-inset-bottom)) !important; right:auto !important;
+    transform:translateX(-50%) !important; width:auto !important; min-width:104px !important;
+    max-width:22vw !important; height:24px !important; margin:0 !important; padding:2px 7px !important;
+    font-size:7px !important; z-index:1003 !important; pointer-events:auto !important;
+  }
+  #speedLightMobile span { font-size:7px !important; }
+  .overlay-card, .boss-card, .upgrade-card, .result-card { padding:10px !important; border-radius:10px !important; max-height:90% !important; overflow:auto !important; }
+  .overlay-card strong { font-size:36px !important; }
+  .boss-card strong { font-size:46px !important; }
+  .boss-card div { font-size:15px !important; }
+  #upgradeChoices { gap:4px !important; margin-top:6px !important; }
+  .upgrade-choice { min-height:65px !important; padding:5px !important; font-size:9px !important; }
+  .upgrade-choice .upgrade-icon { font-size:18px !important; }
+  .upgrade-choice .upgrade-title { font-size:9px !important; margin-top:3px !important; }
+  .upgrade-choice .upgrade-desc { font-size:7px !important; }
+}
