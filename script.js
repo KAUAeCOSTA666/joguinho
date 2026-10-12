@@ -216,23 +216,7 @@ function buildAbilityPanels() {
 }
 
 function buildMobileAbilityButtons() {
-  for (const playerId of [1, 2]) {
-    const holder = $(`mobileAbilities${playerId}`);
-    if (!holder) continue;
-    holder.innerHTML = "";
-    ABILITIES.forEach((ability, index) => {
-      if (index === 8) return; // Speed of Light has its own centered button below the arena.
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "mobile-ability-btn locked";
-      button.dataset.player = String(playerId);
-      button.dataset.ability = String(index);
-      button.title = `${ability.name} (${playerId === 1 ? ability.key1 : ability.key2})`;
-      button.innerHTML = `<span>${ability.icon}</span><small>${playerId === 1 ? ability.key1 : ability.key2}</small>`;
-      button.addEventListener("click", () => activateFromTouch(playerId, index));
-      holder.appendChild(button);
-    });
-  }
+  // As habilidades são ativadas pelo teclado/atalhos e não ocupam mais a área inferior da arena.
 }
 
 function activateFromTouch(playerId, index) {
@@ -279,14 +263,7 @@ function updatePlayerPanels() {
       }
     });
   }
-  const mobileSpecial = $("speedLightMobile");
-  if (mobileSpecial) {
-    const controlled = onlineRole === "guest" ? game.players[1] : game.players[0];
-    const ready = !!controlled?.abilities?.[8] && (controlled.cooldowns[8] || 0) <= 0 && controlled.alive;
-    mobileSpecial.disabled = !ready;
-    mobileSpecial.classList.toggle("unlocked", ready);
-    mobileSpecial.classList.toggle("charging", (controlled?.speedLightCharge || 0) > 0);
-  }
+
 }
 
 async function requestLandscapeMode() {
@@ -1891,16 +1868,7 @@ function setupDirectionPads() {
 }
 
 function setupMobileSpecial() {
-  const button = $("speedLightMobile");
-  if (!button) return;
-  button.addEventListener("click", () => {
-    const player = onlineRole === "guest" ? game.players[1] : game.players[0];
-    if (!player?.abilities?.[8] || (player.cooldowns[8] || 0) > 0) return;
-    if (onlineRole === "guest") {
-      if (onlineSocket?.connected && onlineStarted) onlineSocket.emit("game-action", { type: "ability", index: 8 });
-    } else if (onlineRole !== "host") activateAbility(player, 8);
-    else activateAbility(player, 8);
-  });
+  // Speed of Light é selecionado na evolução e ativado pelo atalho de teclado existente.
 }
 
 function resetJoysticks() {

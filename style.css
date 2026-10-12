@@ -382,3 +382,24 @@
   .upgrade-choice .upgrade-title { font-size:9px !important; margin-top:3px !important; }
   .upgrade-choice .upgrade-desc { font-size:7px !important; }
 }
+
+
+/* Mobile landscape controls: compact 1-2-1 directional pad, no joystick/skill buttons overlay. */
+@media (orientation: landscape) and (pointer: coarse) {
+  #mobileControls { display:block !important; position:fixed !important; inset:0 !important; pointer-events:none !important; z-index:1000 !important; }
+  #mobileP1, #mobileP2 { display:contents !important; }
+  #mobileP1.hidden-mobile, #mobileP2.hidden-mobile { display:none !important; }
+  .mobile-control-title, .mobile-ability-buttons, .mobile-ability-btn, #speedLightMobile { display:none !important; }
+  .direction-pad {
+    position:fixed !important; right:max(8px, env(safe-area-inset-right)) !important;
+    bottom:max(8px, env(safe-area-inset-bottom)) !important;
+    width:clamp(90px, 13vw, 126px) !important; height:clamp(84px, 23vh, 112px) !important;
+    display:grid !important; grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+    grid-template-rows:repeat(3,minmax(0,1fr)) !important; gap:3px !important;
+    grid-template-areas:". up ." "left . right" ". down .";
+    pointer-events:auto !important; z-index:1002 !important;
+  }
+  .dir-up { grid-area:up !important; } .dir-left { grid-area:left !important; }
+  .dir-right { grid-area:right !important; } .dir-down { grid-area:down !important; }
+  .dir-btn { width:100% !important; height:100% !important; min-width:0 !important; margin:0 !important; padding:0 !important; font-size:clamp(13px,2.4vh,20px) !important; border-radius:7px !important; touch-action:none !important; }
+}
