@@ -186,7 +186,7 @@ function resetPlayerPanels() {
   $("gameScreen").classList.toggle("duo", duo);
   // Exactly one mobile movement pad per online client:
   // host owns Player 1; guest owns Player 2. Local duo keeps both pads.
-  const showP1Controls = onlineRole === "host" || (!onlineRole && true);
+  const showP1Controls = onlineRole !== "guest";
   const showP2Controls = onlineRole === "guest" || (!onlineRole && duo);
   $("mobileP1").classList.toggle("hidden-mobile", !showP1Controls);
   $("mobileP2").classList.toggle("hidden-mobile", !showP2Controls);
@@ -1849,48 +1849,64 @@ function setupJoystick(id, playerId) {
 }
 
 function setupDirectionPads() {
-  // Track each pressed direction independently so multi-touch works on mobile.
+  // Cada pad controla exclusivamente o jogador indicado no HTML.
+  // Isso impede que o pad do convidado/host redirecione os comandos por engano.
   const held = { 1: new Set(), 2: new Set() };
   const refresh = id => {
     const keys = held[id];
     joystickState[id].x = (keys.has("right") ? 1 : 0) - (keys.has("left") ? 1 : 0);
     joystickState[id].y = (keys.has("down") ? 1 : 0) - (keys.has("up") ? 1 : 0);
   };
-  document.querySelectorAll(".direction-pad").forEach(pad => {
-    const padPlayerId = Number(pad.dataset.player);
-    // Online host must control P1, online guest must control P2. The hidden
-    // opposite pad cannot inject input even if a browser fires a stale touch.
-    const getControlledPlayerId = () => onlineRole === "host" ? 1 : onlineRole === "guest" ? 2 : padPlayerId;
-    const id = padPlayerId;
+  const releaseAll = id => {
+    held[id].clear();
+    refresh(id);
+    document.querySelectorAll(`.direction-pad[data-player="${id}"] .dir-btn`).forEach(button => button.classList.remove("pressed"));
+  };
+
+  document.querySelectorAll(".direction-pad[data-player]").forEach(pad => {
+    const playerId = Number(pad.dataset.player);
+    if (playerId !== 1 && playerId !== 2) return;
     pad.querySelectorAll(".dir-btn[data-dir]").forEach(button => {
       const dir = button.dataset.dir;
+      let pressed = false;
       const press = event => {
         event.preventDefault();
-        const controlledId = getControlledPlayerId();
-        held[controlledId].add(dir);
-        refresh(controlledId);
+        if (pressed) return;
+        pressed = true;
+        held[playerId].add(dir);
+        refresh(playerId);
         button.classList.add("pressed");
-        try { button.setPointerCapture?.(event.pointerId); } catch (_) {}
+        if (event.pointerId !== undefined && button.setPointerCapture) {
+          try { button.setPointerCapture(event.pointerId); } catch (_) {}
+        }
       };
       const release = event => {
         if (event) event.preventDefault?.();
-        const controlledId = getControlledPlayerId();
-        held[controlledId].delete(dir);
-        refresh(controlledId);
+        if (!pressed) return;
+        pressed = false;
+        held[playerId].delete(dir);
+        refresh(playerId);
         button.classList.remove("pressed");
       };
-      button.addEventListener("pointerdown", press, {passive:false});
-      button.addEventListener("pointerup", release, {passive:false});
-      button.addEventListener("pointercancel", release, {passive:false});
-      button.addEventListener("lostpointercapture", release);
-      button.addEventListener("touchstart", press, {passive:false});
-      button.addEventListener("touchend", release, {passive:false});
-      button.addEventListener("touchcancel", release, {passive:false});
-      button.addEventListener("contextmenu", e => e.preventDefault());
+      if (window.PointerEvent) {
+        button.addEventListener("pointerdown", press, { passive: false });
+        button.addEventListener("pointerup", release, { passive: false });
+        button.addEventListener("pointercancel", release, { passive: false });
+        button.addEventListener("lostpointercapture", release);
+      } else {
+        button.addEventListener("touchstart", press, { passive: false });
+        button.addEventListener("touchend", release, { passive: false });
+        button.addEventListener("touchcancel", release, { passive: false });
+        button.addEventListener("mousedown", press, { passive: false });
+        button.addEventListener("mouseup", release, { passive: false });
+        button.addEventListener("mouseleave", release);
+      }
+      button.addEventListener("contextmenu", event => event.preventDefault());
     });
   });
-  window.addEventListener("blur", () => { for (const id of [1,2]) { held[id].clear(); refresh(id); } });
+  window.addEventListener("blur", () => { releaseAll(1); releaseAll(2); });
 }
+
 function setupMobileSpecial() {
   // Speed of Light é selecionado na evolução e ativado pelo atalho de teclado existente.
 }
@@ -2388,6 +2404,7 @@ $("createRoomBtn").addEventListener("click", async () => {
     if (!result?.success) { setOnlineStatus(result?.error || "Não foi possível criar a sala.", "error"); return; }
     onlineRoom = result.code;
     onlineRole = "host";
+    resetPlayerPanels();
     onlineStarted = false;
     onlinePlayerCount = 1;
     updateOnlineRoomInfo(1);
@@ -2404,6 +2421,7 @@ $("joinRoomBtn").addEventListener("click", async () => {
     if (!result?.success) { setOnlineStatus(result?.error || "Não foi possível entrar na sala.", "error"); return; }
     onlineRoom = result.code;
     onlineRole = "guest";
+    resetPlayerPanels();
     onlineStarted = false;
     onlinePlayerCount = 2;
     updateOnlineRoomInfo(2);
