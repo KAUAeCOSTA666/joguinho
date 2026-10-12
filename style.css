@@ -439,3 +439,12 @@
   #gameScreen { padding-bottom: 176px !important; }
   .direction-pad, body.landscape-mode .direction-pad { width: 146px !important; height: 138px !important; }
 }
+
+
+/* Final touch-control hit-testing fix: the pad and its buttons must receive input. */
+@media (max-width: 850px), (orientation: landscape) and (pointer: coarse) {
+  #mobileControls { pointer-events: none !important; }
+  #mobileP1, #mobileP2 { pointer-events: auto !important; }
+  .direction-pad { pointer-events: auto !important; position: relative; z-index: 10001 !important; }
+  .direction-pad .dir-btn { pointer-events: auto !important; position: relative; z-index: 10002 !important; touch-action: none !important; }
+}

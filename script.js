@@ -185,7 +185,7 @@ function resetPlayerPanels() {
   $("playerPanel2").style.display = duo ? "" : "none";
   $("gameScreen").classList.toggle("duo", duo);
   // Exactly one mobile movement pad per online client:
-  // host owns Player 1; guest owns Player 2. Local duo keeps both pads.
+  // Online host owns Player 1; online guest owns Player 2.
   const showP1Controls = onlineRole !== "guest";
   const showP2Controls = onlineRole === "guest" || (!onlineRole && duo);
   $("mobileP1").classList.toggle("hidden-mobile", !showP1Controls);
@@ -294,7 +294,7 @@ function startGame(mode) {
 
   if (onlineRole && mode !== "duo") { onlineRole = null; onlineRoom = null; onlineStarted = false; }
   game.mode = mode;
-  $("modeValue").textContent = mode === "solo" ? "🧑 SOLO" : (onlineRole ? "🌐 ONLINE DUO" : "👥 DUO LOCAL");
+  $("modeValue").textContent = mode === "solo" ? "🧑 SOLO" : "🌐 ONLINE DUO";
   game.state = "roulette";
   game.stage = 1;
   game.bossNumber = 0;
@@ -1853,57 +1853,79 @@ function setupJoystick(id, playerId) {
 }
 
 function setupDirectionPads() {
-  // Touch-first controls: handle both Pointer Events and Touch Events because
-  // some mobile browsers/webviews deliver only one reliably.
+  // Os controles são associados ao personagem atualmente controlado neste dispositivo.
+  // Solo: controla o único personagem vivo/visível. Online: host = J1, convidado = J2.
   const held = { 1: new Set(), 2: new Set() };
-  const refresh = id => {
+  const activePointers = new Map();
+
+  function controlledPlayerId(padId) {
+    if (onlineRole === "guest") return 2;
+    if (onlineRole === "host") return 1;
+    if (game.mode === "solo") {
+      const current = game.players.find(player => player && player.alive) || game.players[0];
+      return current ? current.id : 1;
+    }
+    return padId;
+  }
+
+  function refresh(id) {
     const keys = held[id];
     joystickState[id].x = (keys.has("right") ? 1 : 0) - (keys.has("left") ? 1 : 0);
     joystickState[id].y = (keys.has("down") ? 1 : 0) - (keys.has("up") ? 1 : 0);
-  };
-  const pressDirection = (id, dir, button, event) => {
-    if (event?.cancelable) event.preventDefault();
-    if (held[id].has(dir)) return;
-    held[id].add(dir);
-    refresh(id);
-    button.classList.add("pressed");
-  };
-  const releaseDirection = (id, dir, button, event) => {
-    if (event?.cancelable) event.preventDefault();
-    if (!held[id].has(dir)) return;
+  }
+
+  function releasePointer(pointerId) {
+    const entry = activePointers.get(pointerId);
+    if (!entry) return;
+    const { id, dir, button } = entry;
+    activePointers.delete(pointerId);
     held[id].delete(dir);
     refresh(id);
     button.classList.remove("pressed");
-  };
-  const releaseAll = id => {
-    held[id].clear();
-    refresh(id);
-    document.querySelectorAll(`.direction-pad[data-player="${id}"] .dir-btn`).forEach(button => button.classList.remove("pressed"));
-  };
+  }
+
+  function releaseAll() {
+    for (const pointerId of [...activePointers.keys()]) releasePointer(pointerId);
+    for (const id of [1, 2]) {
+      held[id].clear();
+      refresh(id);
+    }
+    document.querySelectorAll(".direction-pad .dir-btn").forEach(button => button.classList.remove("pressed"));
+  }
 
   document.querySelectorAll(".direction-pad[data-player]").forEach(pad => {
-    const id = Number(pad.dataset.player);
-    if (id !== 1 && id !== 2) return;
+    const padId = Number(pad.dataset.player);
     pad.querySelectorAll(".dir-btn[data-dir]").forEach(button => {
       const dir = button.dataset.dir;
-      button.addEventListener("pointerdown", event => pressDirection(id, dir, button, event), { passive: false });
-      button.addEventListener("pointerup", event => releaseDirection(id, dir, button, event), { passive: false });
-      button.addEventListener("pointercancel", event => releaseDirection(id, dir, button, event), { passive: false });
-      // Explicit touch handlers are intentional fallback for mobile webviews.
-      button.addEventListener("touchstart", event => pressDirection(id, dir, button, event), { passive: false });
-      button.addEventListener("touchend", event => releaseDirection(id, dir, button, event), { passive: false });
-      button.addEventListener("touchcancel", event => releaseDirection(id, dir, button, event), { passive: false });
-      button.addEventListener("mousedown", event => pressDirection(id, dir, button, event), { passive: false });
-      button.addEventListener("mouseup", event => releaseDirection(id, dir, button, event), { passive: false });
-      button.addEventListener("mouseleave", event => releaseDirection(id, dir, button, event));
+      button.style.touchAction = "none";
+
+      button.addEventListener("pointerdown", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const id = controlledPlayerId(padId);
+        // Evita que um segundo pointer no mesmo botão duplique a direção.
+        if ([...activePointers.values()].some(item => item.button === button)) return;
+        held[id].add(dir);
+        refresh(id);
+        activePointers.set(event.pointerId, { id, dir, button });
+        button.classList.add("pressed");
+        try { button.setPointerCapture(event.pointerId); } catch (_) {}
+      }, { passive: false });
+
+      button.addEventListener("pointerup", event => {
+        event.preventDefault();
+        releasePointer(event.pointerId);
+      }, { passive: false });
+      button.addEventListener("pointercancel", event => releasePointer(event.pointerId));
+      button.addEventListener("lostpointercapture", event => releasePointer(event.pointerId));
       button.addEventListener("contextmenu", event => event.preventDefault());
     });
   });
-  // A release outside the button or an app focus change must never leave movement stuck.
-  window.addEventListener("touchend", event => { if (!event.touches || event.touches.length === 0) { releaseAll(1); releaseAll(2); } }, { passive: true });
-  window.addEventListener("touchcancel", () => { releaseAll(1); releaseAll(2); }, { passive: true });
-  window.addEventListener("blur", () => { releaseAll(1); releaseAll(2); });
-  document.addEventListener("visibilitychange", () => { if (document.hidden) { releaseAll(1); releaseAll(2); } });
+
+  window.addEventListener("pointerup", event => releasePointer(event.pointerId));
+  window.addEventListener("pointercancel", event => releasePointer(event.pointerId));
+  window.addEventListener("blur", releaseAll);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) releaseAll(); });
 }
 
 function setupMobileSpecial() {
@@ -2090,7 +2112,6 @@ $("backModeBtn").addEventListener("click", () => showScreen("mainMenu"));
 $("backInstructionsBtn").addEventListener("click", () => showScreen("mainMenu"));
 
 $("soloBtn").addEventListener("click", () => startGame("solo"));
-$("duoBtn").addEventListener("click", () => startGame("duo"));
 
 $("menuBtn").addEventListener("click", returnToMenu);
 $("gameOverMenuBtn").addEventListener("click", returnToMenu);
