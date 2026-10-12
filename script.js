@@ -57,6 +57,8 @@ const game = {
   orbs: [],
   particles: [],
   floatingTexts: [],
+  fireballs: [],
+  santa: null,
   stars: [],
   stageTimer: 0,
   bossAttackTimer: 0,
@@ -169,6 +171,7 @@ function createPlayer(id, x, y) {
     speedLightPoints: 0,
     speedLightStartedAt: 0,
     speedLightTrail: [],
+    iceSnowTimer: 0,
     hitCooldown: 0,
     abilities,
     cooldowns: Array(ABILITIES.length).fill(0),
@@ -319,6 +322,8 @@ function startGame(mode) {
   game.orbs = [];
   game.particles = [];
   game.floatingTexts = [];
+  game.fireballs = [];
+  game.santa = null;
   game.boss = null;
   game.transitionLocked = false;
   game.upgradePlayer = null;
@@ -354,6 +359,8 @@ function returnToMenu() {
   game.orbs = [];
   game.particles = [];
   game.floatingTexts = [];
+  game.fireballs = [];
+  game.santa = null;
   game.boss = null;
   game.upgradePlayer = null;
   game.transitionLocked = false;
@@ -411,6 +418,8 @@ function startStage() {
   game.orbs = [];
   game.particles = [];
   game.floatingTexts = [];
+  game.fireballs = [];
+  game.santa = null;
   game.boss = null;
   game.upgradePlayer = null;
 
@@ -507,6 +516,8 @@ function enterGameplay() {
   game.enemySpawnTimer = 1.8;
   game.enemies = [];
   game.orbs = [];
+  game.fireballs = [];
+  game.santa = null;
   game.boss = null;
 
   spawnOrbs(game.target);
@@ -553,7 +564,6 @@ function finishStage(reason) {
   $("upgradeOverlay").classList.remove("show");
 
   if (reason === "target") {
-    game.score += game.target * 10;
     showToast("✨ FASE CONCLUÍDA!", 1000);
   } else {
     showToast("⏱️ TEMPO ESGOTADO!", 1000);
@@ -669,6 +679,7 @@ function collectOrb(orb, player) {
 
   orb.collected = true;
   playSfx("orb");
+  game.score += 10;
   game.collected++;
   player.totalCollected++;
 
@@ -757,7 +768,7 @@ function spawnOrbParticles(x, y) {
   const mobileEffects = window.matchMedia("(pointer: coarse)").matches;
   const colors = ["#ffe66d", "#ffffff", "#36f5ff", "#ffcf45"];
 
-  for (let i = 0; i < (mobileEffects ? 5 : 18); i++) {
+  for (let i = 0; i < (mobileEffects ? 3 : 7); i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = rand(45, 210);
     const life = rand(0.25, 0.7);
@@ -774,7 +785,7 @@ function spawnOrbParticles(x, y) {
     });
   }
 
-  for (let i = 0; i < (mobileEffects ? 1 : 5); i++) {
+  for (let i = 0; i < 1; i++) {
     game.particles.push({
       x: x + rand(-5, 5),
       y: y + rand(-5, 5),
@@ -787,9 +798,12 @@ function spawnOrbParticles(x, y) {
       ring: true
     });
   }
+  const cap = window.matchMedia("(pointer: coarse)").matches ? 100 : 260;
+  if (game.particles.length > cap) game.particles.splice(0, game.particles.length - cap);
 }
 
 function addFloatingText(x, y, text, color) {
+  if (game.floatingTexts.length > 45) game.floatingTexts.splice(0, game.floatingTexts.length - 45);
   game.floatingTexts.push({
     x,
     y,
@@ -801,7 +815,8 @@ function addFloatingText(x, y, text, color) {
 }
 
 function updateParticles(dt) {
-  if (window.matchMedia("(pointer: coarse)").matches && game.particles.length > 180) game.particles.splice(0, game.particles.length - 180);
+  const particleCap = window.matchMedia("(pointer: coarse)").matches ? 100 : 260;
+  if (game.particles.length > particleCap) game.particles.splice(0, game.particles.length - particleCap);
   for (const particle of game.particles) {
     particle.life -= dt;
     particle.x += particle.vx * dt;
@@ -1051,7 +1066,15 @@ function activateAbility(player, index) {
     player.abilityTimers[index] = ability.duration;
   } else if (index === 3) {
     player.ice = ability.duration;
+    player.iceSnowTimer = 0;
     player.abilityTimers[index] = ability.duration;
+    // A burst of icy shards and fine white snow streaks.
+    for (let i = 0; i < 24; i++) {
+      const angle = Math.PI * 2 * i / 24;
+      const speed = rand(55, 190);
+      game.particles.push({ x: player.x, y: player.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: rand(0.35, 0.8), maxLife: 0.8, size: rand(2, 4), color: i % 3 ? "#eafcff" : "#73eaff", streak: true });
+    }
+    game.santa = { x: -145, y: rand(52, 105), life: 7.5, maxLife: 7.5 };
   } else if (index === 4) {
     player.speedBoost = ability.duration;
     player.abilityTimers[index] = ability.duration;
@@ -1063,6 +1086,16 @@ function activateAbility(player, index) {
     spawnHealParticles(player);
     player.cooldowns[index] = cooldown;
   } else if (index === 7) {
+    // Visual fireballs launch toward nearby enemies while preserving the existing area-damage behavior.
+    const fireTargets = game.enemies
+      .filter(enemy => distance(player.x, player.y, enemy.x, enemy.y) < 250)
+      .slice(0, 5)
+      .map(enemy => ({ x: enemy.x, y: enemy.y }));
+    if (game.boss && distance(player.x, player.y, game.boss.x, game.boss.y) < 280) fireTargets.push({ x: game.boss.x, y: game.boss.y });
+    if (!fireTargets.length) fireTargets.push({ x: clamp(player.x + (player.id === 1 ? 260 : -260), 20, W - 20), y: player.y });
+    for (const target of fireTargets) {
+      game.fireballs.push({ x: player.x, y: player.y, startX: player.x, startY: player.y, targetX: target.x, targetY: target.y, life: 0.42, maxLife: 0.42, size: rand(9, 14) });
+    }
     for (const enemy of game.enemies) {
       if (distance(player.x, player.y, enemy.x, enemy.y) < 210) {
         enemy.dead = true;
@@ -1198,6 +1231,14 @@ function updatePlayer(player, dt) {
   player.invisible = Math.max(0, player.invisible - dt);
   player.ice = Math.max(0, player.ice - dt);
   player.speedBoost = Math.max(0, player.speedBoost - dt);
+  if (player.ice > 0) {
+    player.iceSnowTimer -= dt;
+    if (player.iceSnowTimer <= 0) {
+      player.iceSnowTimer = 0.09;
+      const angle = rand(0, Math.PI * 2);
+      game.particles.push({ x: player.x + Math.cos(angle) * rand(14, 25), y: player.y + Math.sin(angle) * rand(14, 25), vx: rand(-20, 20), vy: rand(-45, -12), life: 0.5, maxLife: 0.5, size: rand(2, 4), color: "#f5fdff", streak: true });
+    }
+  }
 
   // Speed of Light: 3s golden charge, visible point-orbit, return pulse, then rainbow dash.
   if (player.speedLightCharge > 0) {
@@ -1452,11 +1493,8 @@ function updateHud() {
   $("collectedValue").textContent = game.collected;
   $("targetValue").textContent = game.target;
   $("enemyValue").textContent = game.enemies.length + (game.boss ? 1 : 0);
-  const points = game.mode === "duo"
-    ? game.players.reduce((sum, player) => sum + (player?.totalCollected || 0), 0)
-    : (game.players[0]?.totalCollected || 0);
   const pointsValue = $("pointsValue");
-  if (pointsValue) pointsValue.textContent = points;
+  if (pointsValue) pointsValue.textContent = game.score;
 }
 
 function update(dt) {
@@ -1480,6 +1518,13 @@ function update(dt) {
   }
 
   updateParticles(dt);
+  for (const fireball of game.fireballs) fireball.life -= dt;
+  game.fireballs = game.fireballs.filter(fireball => fireball.life > 0);
+  if (game.santa) {
+    game.santa.x += 210 * dt;
+    game.santa.life -= dt;
+    if (game.santa.life <= 0 || game.santa.x > W + 170) game.santa = null;
+  }
 
   if (game.state !== "playing") return;
 
@@ -1626,6 +1671,38 @@ function drawOrbs(time) {
   }
 }
 
+
+function drawAbilityEffects(time) {
+  // Fireballs: bright orange core, red outer glow and a short ember trail.
+  for (const fireball of game.fireballs) {
+    const progress = 1 - fireball.life / fireball.maxLife;
+    const x = fireball.startX + (fireball.targetX - fireball.startX) * progress;
+    const y = fireball.startY + (fireball.targetY - fireball.startY) * progress;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.shadowColor = "#ff5a18";
+    ctx.shadowBlur = 24;
+    ctx.fillStyle = "#ff4b16";
+    ctx.beginPath(); ctx.arc(x, y, fireball.size, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#ffd35a";
+    ctx.beginPath(); ctx.arc(x - 2, y - 2, fireball.size * 0.52, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "rgba(255,125,35,0.75)"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - (fireball.targetX - fireball.startX) * 0.08, y - (fireball.targetY - fireball.startY) * 0.08); ctx.stroke();
+    ctx.restore();
+  }
+  // The silly seasonal guest: Santa and his sleigh race across the arena during Ice.
+  if (game.santa) {
+    ctx.save();
+    ctx.font = "30px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "#dffaff";
+    ctx.shadowBlur = 14;
+    ctx.fillText("🎅🛷🦌", game.santa.x, game.santa.y + Math.sin(time * 8) * 4);
+    ctx.restore();
+  }
+}
+
 function drawPlayer(player, time) {
   if (!player.alive) return;
 
@@ -1692,6 +1769,26 @@ function drawPlayer(player, time) {
   ctx.textBaseline = "middle";
   ctx.fillText(player.id === 1 ? "⚡" : "🔥", player.x, player.y + 1);
 
+  if (player.ice > 0) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(185,245,255,0.95)";
+    ctx.lineWidth = 3;
+    ctx.shadowColor = "#8defff";
+    ctx.shadowBlur = 22;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.r + 11 + Math.sin(time * 9) * 3, time * 1.4, time * 1.4 + Math.PI * 1.6);
+    ctx.stroke();
+    ctx.restore();
+  }
+  if (player.magnetRange > 0) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(100,220,255,0.42)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 28 + Math.sin(time * 7) * 3, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
   if (player.shield > 0) {
     ctx.strokeStyle = player.color;
     ctx.lineWidth = 2;
@@ -1835,7 +1932,13 @@ function drawParticles() {
     ctx.fillStyle = particle.color;
     ctx.lineWidth = 2;
 
-    if (particle.ring) {
+    if (particle.streak) {
+      ctx.beginPath();
+      ctx.moveTo(particle.x, particle.y);
+      ctx.lineTo(particle.x - particle.vx * 0.09, particle.y - particle.vy * 0.09);
+      ctx.lineWidth = Math.max(1, particle.size * alpha);
+      ctx.stroke();
+    } else if (particle.ring) {
       const radius = particle.size * (1 + (1 - alpha) * 3);
       ctx.beginPath();
       ctx.arc(particle.x, particle.y, radius, 0, Math.PI * 2);
@@ -1872,6 +1975,7 @@ function draw(time) {
   drawBackground(time);
   drawTimeFreezeEffect(time);
   drawOrbs(time);
+  drawAbilityEffects(time);
 
   for (const enemy of game.enemies) drawEnemy(enemy, time);
 
