@@ -448,3 +448,7 @@
   .direction-pad { pointer-events: auto !important; position: relative; z-index: 10001 !important; }
   .direction-pad .dir-btn { pointer-events: auto !important; position: relative; z-index: 10002 !important; touch-action: none !important; }
 }
+
+/* Collected-orb counter */
+.points-hud { color: #ffe66d; border-color: rgba(255,230,109,.35); text-shadow: 0 0 8px rgba(255,220,50,.25); }
+.points-hud span { color: #fff7bd; font-variant-numeric: tabular-nums; }

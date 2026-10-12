@@ -19,6 +19,7 @@ let remotePlayerInput = { x: 0, y: 0 };
 let lastOnlineInputAt = 0;
 let lastOnlineSnapshotAt = 0;
 let lastOnlineUiState = "";
+let lastOrbSoundAt = 0;
 
 const screens = ["mainMenu", "modeMenu", "onlineMenu", "instructionsMenu", "gameScreen"];
 const overlays = ["rouletteOverlay", "bossOverlay", "upgradeOverlay", "gameOverOverlay", "victoryOverlay"];
@@ -75,7 +76,8 @@ const game = {
   keys: {},
   musicEnabled: true,
   music: null,
-  audioTimer: null
+  audioTimer: null,
+  timeFreezePulse: 0
 };
 
 const joystickState = {
@@ -163,6 +165,10 @@ function createPlayer(id, x, y) {
     speedLightActive: false,
     speedLightRound: 0,
     speedLightTimer: 0,
+    speedLightReturn: 0,
+    speedLightPoints: 0,
+    speedLightStartedAt: 0,
+    speedLightTrail: [],
     hitCooldown: 0,
     abilities,
     cooldowns: Array(ABILITIES.length).fill(0),
@@ -662,6 +668,7 @@ function collectOrb(orb, player) {
   if (orb.collected || game.state !== "playing") return;
 
   orb.collected = true;
+  playSfx("orb");
   game.collected++;
   player.totalCollected++;
 
@@ -675,7 +682,7 @@ function collectOrb(orb, player) {
   gainXP(player, amount);
   updateHud();
 
-  if (game.collected >= game.target) {
+  if (game.collected >= game.target && game.state === "playing") {
     finishStage("target");
   }
 }
@@ -688,12 +695,12 @@ function gainXP(player, amount) {
   while (player.xp >= player.xpRequired) {
     player.xp -= player.xpRequired;
     player.level++;
+    playSfx("level");
     player.xpRequired = Math.ceil(player.xpRequired * 1.25);
 
     if (
       player.level % 5 === 0 &&
-      game.state === "playing" &&
-      game.collected < game.target
+      game.state === "playing"
     ) {
       openUpgradeSelection(player);
       break;
@@ -922,7 +929,7 @@ function createUpgradeChoices(player) {
 }
 
 function openUpgradeSelection(player) {
-  if (game.state !== "playing" || game.collected >= game.target) return;
+  if (game.state !== "playing") return;
 
   game.state = "upgrade";
   game.upgradePlayer = player;
@@ -978,6 +985,11 @@ function chooseUpgrade(index) {
 
   game.state = "playing";
   updatePlayerPanels();
+
+  if (game.collected >= game.target) {
+    finishStage("target");
+    return;
+  }
 
   showToast(
     upgrade && upgrade.revive
@@ -1068,9 +1080,13 @@ function activateAbility(player, index) {
     player.cooldowns[index] = cooldown;
   } else if (index === 8) {
     player.speedLightCharge = 3;
+    player.speedLightReturn = 0;
     player.speedLightActive = false;
     player.speedLightRound = 0;
     player.speedLightTimer = 0;
+    player.speedLightPoints = player.totalCollected;
+    player.speedLightStartedAt = performance.now() / 1000;
+    player.speedLightTrail = [];
     player.cooldowns[index] = cooldown;
     for (let i = 0; i < 34; i++) {
       const angle = Math.random() * Math.PI * 2;
@@ -1183,55 +1199,74 @@ function updatePlayer(player, dt) {
   player.ice = Math.max(0, player.ice - dt);
   player.speedBoost = Math.max(0, player.speedBoost - dt);
 
+  // Speed of Light: 3s golden charge, visible point-orbit, return pulse, then rainbow dash.
   if (player.speedLightCharge > 0) {
     player.speedLightCharge = Math.max(0, player.speedLightCharge - dt);
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 3; i++) {
       const angle = Math.random() * Math.PI * 2;
-      game.particles.push({ x: player.x + Math.cos(angle) * rand(8, 30), y: player.y + Math.sin(angle) * rand(8, 30), vx: -Math.cos(angle) * 22, vy: -Math.sin(angle) * 22, life: 0.32, maxLife: 0.32, size: rand(2, 3.5), color: "#ffe45c" });
+      game.particles.push({ x: player.x + Math.cos(angle) * rand(12, 38), y: player.y + Math.sin(angle) * rand(12, 38), vx: -Math.cos(angle) * 28, vy: -Math.sin(angle) * 28, life: 0.36, maxLife: 0.36, size: rand(2, 4), color: "#ffe45c" });
     }
     if (player.speedLightCharge <= 0) {
+      player.speedLightReturn = 0.58;
+      playSfx("light");
+    }
+  } else if (player.speedLightReturn > 0) {
+    player.speedLightReturn = Math.max(0, player.speedLightReturn - dt);
+    for (let i = 0; i < 2; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      game.particles.push({ x: player.x + Math.cos(angle) * rand(10, 50), y: player.y + Math.sin(angle) * rand(10, 50), vx: -Math.cos(angle) * 70, vy: -Math.sin(angle) * 70, life: 0.28, maxLife: 0.28, size: rand(2, 4), color: "#fff3a1" });
+    }
+    if (player.speedLightReturn <= 0) {
       player.speedLightActive = true;
       player.speedLightRound = 0;
       player.speedLightTimer = 0;
-      player.shield = Math.max(player.shield, 3.2);
+      player.shield = Math.max(player.shield, 3.5);
       showToast("☀️ SPEED OF LIGHT!", 1200);
     }
   }
+
   if (player.speedLightActive) {
     player.speedLightTimer += dt;
     const lane = Math.min(4, player.speedLightRound);
     const targetX = lane % 2 === 0 ? W - player.r : player.r;
-    const targetY = clamp(70 + lane * ((H - 140) / 4), player.r, H - player.r);
+    const targetY = clamp(65 + lane * ((H - 130) / 4), player.r, H - player.r);
     const dx = targetX - player.x;
     const dy = targetY - player.y;
     const d = Math.hypot(dx, dy);
-    const speed = 1900;
+    const speed = 2050;
     if (d > 2) {
       player.x += dx / d * Math.min(d, speed * dt);
       player.y += dy / d * Math.min(d, speed * dt);
     }
-    // The light trail magnetizes nearby orbs and collects them on every pass.
+
+    // Rainbow trail follows the character, while time-frozen orbs are pulled in from across the arena.
+    player.speedLightTrail.push({ x: player.x, y: player.y, life: 0.52 });
+    for (const point of player.speedLightTrail) point.life -= dt;
+    player.speedLightTrail = player.speedLightTrail.filter(point => point.life > 0).slice(-36);
+
     for (const orb of game.orbs) {
       if (orb.collected) continue;
       const od = distance(player.x, player.y, orb.x, orb.y);
-      if (od < 92) {
-        orb.x += (player.x - orb.x) * Math.min(1, dt * 14);
-        orb.y += (player.y - orb.y) * Math.min(1, dt * 14);
-        if (distance(player.x, player.y, orb.x, orb.y) < player.r + orb.r + 10) collectOrb(orb, player);
+      if (od < 340) {
+        const pull = Math.min(1, dt * 5.5);
+        orb.x += (player.x - orb.x) * pull;
+        orb.y += (player.y - orb.y) * pull;
       }
+      if (distance(player.x, player.y, orb.x, orb.y) < player.r + orb.r + 13) collectOrb(orb, player);
     }
-    if (d <= 3 || player.speedLightTimer > 0.55) {
+
+    if (d <= 3 || player.speedLightTimer > 0.52) {
       player.speedLightRound++;
       player.speedLightTimer = 0;
       if (player.speedLightRound >= 5) {
         player.speedLightActive = false;
         player.speedLightRound = 0;
+        player.speedLightTrail = [];
         player.shield = Math.max(player.shield, 0.35);
       }
     }
     player.x = clamp(player.x, player.r, W - player.r);
     player.y = clamp(player.y, player.r, H - player.r);
-    spawnDashParticles(player);
     updatePlayerPanels();
     return;
   }
@@ -1417,6 +1452,10 @@ function updateHud() {
   $("collectedValue").textContent = game.collected;
   $("targetValue").textContent = game.target;
   $("enemyValue").textContent = game.enemies.length + (game.boss ? 1 : 0);
+  const points = game.mode === "duo"
+    ? game.players.reduce((sum, player) => sum + (player?.totalCollected || 0), 0)
+    : (game.players[0]?.totalCollected || 0);
+  $("pointsValue").textContent = points;
 }
 
 function update(dt) {
@@ -1449,8 +1488,11 @@ function update(dt) {
     updatePlayer(player, dt);
   }
 
-  updateOrbs(dt);
-  updateEnemies(dt);
+  const timeFrozen = activePlayers().some(player => player.speedLightActive);
+  if (!timeFrozen) {
+    updateOrbs(dt);
+    updateEnemies(dt);
+  }
 
   if (game.state !== "playing") return;
 
@@ -1524,6 +1566,27 @@ function drawBackground(time) {
   }
 }
 
+function drawTimeFreezeEffect(time) {
+  if (!activePlayers().some(player => player.speedLightActive)) return;
+  ctx.save();
+  ctx.fillStyle = "rgba(100,235,255,0.075)";
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = "rgba(180,250,255,0.3)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 14; i++) {
+    const x = (i * 97 + 35) % W;
+    const y = (i * 61 + 20) % H;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 14 + Math.sin(time + i) * 4, y - 5);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(220,250,255,0.65)";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(2, 2, W - 4, H - 4);
+  ctx.restore();
+}
+
 function drawOrbs(time) {
   for (const orb of game.orbs) {
     if (orb.collected) continue;
@@ -1566,6 +1629,48 @@ function drawPlayer(player, time) {
   if (!player.alive) return;
 
   ctx.save();
+  if (player.speedLightTrail?.length) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 1; i < player.speedLightTrail.length; i++) {
+      const a = player.speedLightTrail[i - 1];
+      const b = player.speedLightTrail[i];
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = `hsla(${(time * 320 + i * 18) % 360},100%,62%,${Math.min(a.life, b.life) * 1.8})`;
+      ctx.lineWidth = 4 + i * 0.08;
+      ctx.shadowColor = ctx.strokeStyle;
+      ctx.shadowBlur = 18;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  const orbiting = player.speedLightCharge > 0 || player.speedLightReturn > 0;
+  if (orbiting && player.speedLightPoints > 0) {
+    const count = Math.min(80, player.speedLightPoints);
+    const returnProgress = player.speedLightReturn > 0 ? 1 - player.speedLightReturn / 0.58 : 0;
+    const radius = (player.r + 18 + Math.sin(time * 5) * 3) * (1 - returnProgress);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < count; i++) {
+      const angle = time * 3.4 + (i / count) * Math.PI * 2;
+      const x = player.x + Math.cos(angle) * radius;
+      const y = player.y + Math.sin(angle) * radius;
+      ctx.beginPath();
+      ctx.fillStyle = "#ffe52e";
+      ctx.shadowColor = "#fff36b";
+      ctx.shadowBlur = 20;
+      ctx.arc(x, y, 2.2 + (i % 3) * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.fillStyle = "#ffffff";
+      ctx.arc(x - 0.7, y - 0.7, 0.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
   ctx.globalAlpha = player.invisible > 0 ? 0.35 : 1;
   ctx.shadowColor = player.color;
   ctx.shadowBlur = player.hitCooldown > 0 ? 4 : 22;
@@ -1614,7 +1719,7 @@ function drawPlayer(player, time) {
       ctx.fillStyle = "#ffe45c";
       ctx.font = "bold 12px Orbitron, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(`${player.speedLightCharge.toFixed(1)}s`, player.x, player.y - 34);
+      ctx.fillText(`${player.speedLightCharge.toFixed(1)}s · ✨${player.speedLightPoints}`, player.x, player.y - 34);
     }
   }
 
@@ -1764,6 +1869,7 @@ function drawParticles() {
 
 function draw(time) {
   drawBackground(time);
+  drawTimeFreezeEffect(time);
   drawOrbs(time);
 
   for (const enemy of game.enemies) drawEnemy(enemy, time);
@@ -1972,86 +2078,110 @@ document.addEventListener("pointerdown", () => {
 
 function startMusic() {
   if (!game.musicEnabled) return;
-
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) return;
-
   try {
     if (!game.music) {
       const audio = new AudioContextClass();
       const master = audio.createGain();
-
-      master.gain.value = 0.045;
+      master.gain.value = 0.20;
       master.connect(audio.destination);
-
-      game.music = {
-        audio,
-        master,
-        boss: false,
-        note: 0
-      };
+      game.music = { audio, master, boss: false, note: 0 };
     }
-
-    if (game.music.audio.state === "suspended") {
-      game.music.audio.resume();
-    }
-
+    if (game.music.audio.state === "suspended") game.music.audio.resume();
     scheduleMusic();
   } catch {
     game.music = null;
   }
 }
 
+function playSfx(kind) {
+  if (!game.musicEnabled) return;
+  if (kind === "orb") {
+    const nowMs = performance.now();
+    if (nowMs - lastOrbSoundAt < 55) return;
+    lastOrbSoundAt = nowMs;
+  }
+  if (!game.music) startMusic();
+  if (!game.music) return;
+  const audio = game.music.audio;
+  if (audio.state === "suspended") audio.resume().catch(() => {});
+  const now = audio.currentTime;
+  const makeTone = (frequency, duration, type = "sine", volume = 0.12, when = now) => {
+    const osc = audio.createOscillator();
+    const gain = audio.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(frequency, when);
+    gain.gain.setValueAtTime(0.0001, when);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume), when + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+    osc.connect(gain); gain.connect(game.music.master);
+    osc.start(when); osc.stop(when + duration + 0.02);
+  };
+  if (kind === "orb") {
+    makeTone(880, 0.09, "sine", 0.13);
+    makeTone(1320, 0.07, "triangle", 0.07, now + 0.025);
+  } else if (kind === "level") {
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => makeTone(f, 0.22, "triangle", 0.14, now + i * 0.085));
+  } else if (kind === "light") {
+    makeTone(196, 0.3, "sawtooth", 0.12);
+    makeTone(392, 0.36, "sawtooth", 0.11, now + 0.04);
+    makeTone(784, 0.28, "triangle", 0.09, now + 0.09);
+  }
+}
+
 function scheduleMusic() {
   if (!game.music || game.audioTimer) return;
-
-  const scale = [0, 3, 7, 10, 12, 10, 7, 3, 5, 8, 12, 15];
   const audio = game.music.audio;
-
+  // Original procedural hard-rock loop: power-chord-like saws, bass and drum hits.
+  const riffs = [0, 0, 7, 0, 10, 7, 5, 3, 0, 0, 12, 10, 7, 5, 3, 5];
   game.audioTimer = setInterval(() => {
     if (!game.musicEnabled || !game.music) return;
-
     const now = audio.currentTime;
-    const index = game.music.note++ % scale.length;
+    const index = game.music.note++ % riffs.length;
     const boss = game.music.boss;
-    const base = boss ? 110 : 82.4;
-    const frequency = base * Math.pow(2, scale[index] / 12);
+    const root = (boss ? 55 : 73.42) * Math.pow(2, riffs[index] / 12);
+    const step = game.music.note % 4;
 
-    const oscillator = audio.createOscillator();
-    const gain = audio.createGain();
+    // Crunchy two-note power chord.
+    for (const frequency of [root, root * 1.5]) {
+      const osc = audio.createOscillator();
+      const filter = audio.createBiquadFilter();
+      const gain = audio.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(frequency, now);
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(boss ? 1300 : 1700, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(boss ? 0.055 : 0.038, now + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + (boss ? 0.17 : 0.13));
+      osc.connect(filter); filter.connect(gain); gain.connect(game.music.master);
+      osc.start(now); osc.stop(now + (boss ? 0.18 : 0.14));
+    }
 
-    oscillator.type = boss ? "sawtooth" : "triangle";
-    oscillator.frequency.setValueAtTime(frequency, now);
-
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.linearRampToValueAtTime(boss ? 0.1 : 0.07, now + 0.025);
-    gain.gain.exponentialRampToValueAtTime(
-      0.0001,
-      now + (boss ? 0.18 : 0.28)
-    );
-
-    oscillator.connect(gain);
-    gain.connect(game.music.master);
-    oscillator.start(now);
-    oscillator.stop(now + (boss ? 0.2 : 0.3));
-
-    if (boss && index % 3 === 0) {
+    // Bass pulse and kick/snare-style synthesized percussion.
+    if (step === 0 || step === 2) {
       const bass = audio.createOscillator();
       const bassGain = audio.createGain();
-
       bass.type = "square";
-      bass.frequency.setValueAtTime(base / 2, now);
-
+      bass.frequency.setValueAtTime(root / 2, now);
       bassGain.gain.setValueAtTime(0.0001, now);
-      bassGain.gain.linearRampToValueAtTime(0.07, now + 0.02);
-      bassGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
-
-      bass.connect(bassGain);
-      bassGain.connect(game.music.master);
-      bass.start(now);
-      bass.stop(now + 0.25);
+      bassGain.gain.linearRampToValueAtTime(0.09, now + 0.008);
+      bassGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.11);
+      bass.connect(bassGain); bassGain.connect(game.music.master);
+      bass.start(now); bass.stop(now + 0.12);
     }
-  }, game.music.boss ? 180 : 270);
+    if (step === 2) {
+      const noise = audio.createOscillator();
+      const ng = audio.createGain();
+      noise.type = "triangle";
+      noise.frequency.setValueAtTime(160, now);
+      ng.gain.setValueAtTime(0.045, now);
+      ng.gain.exponentialRampToValueAtTime(0.0001, now + 0.055);
+      noise.connect(ng); ng.connect(game.music.master);
+      noise.start(now); noise.stop(now + 0.06);
+    }
+  }, game.music.boss ? 125 : 155);
 }
 
 function setBossMusic(isBoss) {
