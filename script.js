@@ -1455,7 +1455,8 @@ function updateHud() {
   const points = game.mode === "duo"
     ? game.players.reduce((sum, player) => sum + (player?.totalCollected || 0), 0)
     : (game.players[0]?.totalCollected || 0);
-  $("pointsValue").textContent = points;
+  const pointsValue = $("pointsValue");
+  if (pointsValue) pointsValue.textContent = points;
 }
 
 function update(dt) {
