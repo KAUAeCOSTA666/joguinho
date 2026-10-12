@@ -184,9 +184,12 @@ function resetPlayerPanels() {
   $("playerPanel1").style.display = "";
   $("playerPanel2").style.display = duo ? "" : "none";
   $("gameScreen").classList.toggle("duo", duo);
-  // In online mode, the guest only needs the Player 2 touch controls.
-  $("mobileP1").classList.toggle("hidden-mobile", onlineRole === "guest");
-  $("mobileP2").classList.toggle("hidden-mobile", !duo || onlineRole === "host");
+  // Exactly one mobile movement pad per online client:
+  // host owns Player 1; guest owns Player 2. Local duo keeps both pads.
+  const showP1Controls = onlineRole === "host" || (!onlineRole && true);
+  const showP2Controls = onlineRole === "guest" || (!onlineRole && duo);
+  $("mobileP1").classList.toggle("hidden-mobile", !showP1Controls);
+  $("mobileP2").classList.toggle("hidden-mobile", !showP2Controls);
 }
 
 function buildAbilityPanels() {
@@ -1846,27 +1849,48 @@ function setupJoystick(id, playerId) {
 }
 
 function setupDirectionPads() {
+  // Track each pressed direction independently so multi-touch works on mobile.
+  const held = { 1: new Set(), 2: new Set() };
+  const refresh = id => {
+    const keys = held[id];
+    joystickState[id].x = (keys.has("right") ? 1 : 0) - (keys.has("left") ? 1 : 0);
+    joystickState[id].y = (keys.has("down") ? 1 : 0) - (keys.has("up") ? 1 : 0);
+  };
   document.querySelectorAll(".direction-pad").forEach(pad => {
-    const playerId = Number(pad.dataset.player);
+    const padPlayerId = Number(pad.dataset.player);
+    // Online host must control P1, online guest must control P2. The hidden
+    // opposite pad cannot inject input even if a browser fires a stale touch.
+    const getControlledPlayerId = () => onlineRole === "host" ? 1 : onlineRole === "guest" ? 2 : padPlayerId;
+    const id = padPlayerId;
     pad.querySelectorAll(".dir-btn[data-dir]").forEach(button => {
       const dir = button.dataset.dir;
-      const setDirection = (pressed) => {
-        const state = joystickState[playerId];
-        if (dir === "left") state.x = pressed ? -1 : (state.x < 0 ? 0 : state.x);
-        if (dir === "right") state.x = pressed ? 1 : (state.x > 0 ? 0 : state.x);
-        if (dir === "up") state.y = pressed ? -1 : (state.y < 0 ? 0 : state.y);
-        if (dir === "down") state.y = pressed ? 1 : (state.y > 0 ? 0 : state.y);
+      const press = event => {
+        event.preventDefault();
+        const controlledId = getControlledPlayerId();
+        held[controlledId].add(dir);
+        refresh(controlledId);
+        button.classList.add("pressed");
+        try { button.setPointerCapture?.(event.pointerId); } catch (_) {}
       };
-      button.addEventListener("pointerdown", event => { event.preventDefault(); button.setPointerCapture?.(event.pointerId); setDirection(true); });
-      const release = event => { event.preventDefault?.(); setDirection(false); };
-      button.addEventListener("pointerup", release);
-      button.addEventListener("pointercancel", release);
+      const release = event => {
+        if (event) event.preventDefault?.();
+        const controlledId = getControlledPlayerId();
+        held[controlledId].delete(dir);
+        refresh(controlledId);
+        button.classList.remove("pressed");
+      };
+      button.addEventListener("pointerdown", press, {passive:false});
+      button.addEventListener("pointerup", release, {passive:false});
+      button.addEventListener("pointercancel", release, {passive:false});
       button.addEventListener("lostpointercapture", release);
-      button.addEventListener("contextmenu", event => event.preventDefault());
+      button.addEventListener("touchstart", press, {passive:false});
+      button.addEventListener("touchend", release, {passive:false});
+      button.addEventListener("touchcancel", release, {passive:false});
+      button.addEventListener("contextmenu", e => e.preventDefault());
     });
   });
+  window.addEventListener("blur", () => { for (const id of [1,2]) { held[id].clear(); refresh(id); } });
 }
-
 function setupMobileSpecial() {
   // Speed of Light é selecionado na evolução e ativado pelo atalho de teclado existente.
 }
@@ -1904,6 +1928,10 @@ function handleAbilityKey(key) {
     activateAbility(game.players[1], index2);
   }
 }
+
+document.addEventListener("pointerdown", () => {
+  if (game.musicEnabled && (!game.music || game.music.audio.state === "suspended")) startMusic();
+}, { passive: true });
 
 function startMusic() {
   if (!game.musicEnabled) return;

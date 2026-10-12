@@ -403,3 +403,12 @@
   .dir-right { grid-area:right !important; } .dir-down { grid-area:down !important; }
   .dir-btn { width:100% !important; height:100% !important; min-width:0 !important; margin:0 !important; padding:0 !important; font-size:clamp(13px,2.4vh,20px) !important; border-radius:7px !important; touch-action:none !important; }
 }
+
+
+/* Mobile-only performance and touch fixes; desktop rendering is unchanged. */
+@media (pointer: coarse) {
+  #gameCanvas { box-shadow:none !important; }
+  .player-panel, .overlay-card, .boss-card, .upgrade-card, .result-card { backdrop-filter:none !important; box-shadow:none !important; }
+  .dir-btn { touch-action:none !important; -webkit-user-select:none !important; user-select:none !important; }
+  .dir-btn.pressed { filter:brightness(1.35); background:#16405a !important; }
+}
