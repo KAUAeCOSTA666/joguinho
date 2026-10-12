@@ -418,7 +418,8 @@ function startStage() {
   }
 
   const multiplier = game.mode === "duo" ? DUO_ORB_COUNT_MULTIPLIER : 1;
-  game.target = randInt(baseMin, baseMax) * multiplier;
+  const stageOrbBonus = game.isBoss ? 50 : Math.max(0, game.stage - 1) * 5;
+  game.target = (randInt(baseMin, baseMax) + stageOrbBonus) * multiplier;
 
   $("rouletteOverlay").classList.add("show");
   $("rouletteMessage").textContent = game.isBoss
@@ -430,7 +431,7 @@ function startStage() {
   game.rouletteSpinTimer = setInterval(() => {
     if (game.state !== "roulette") return;
     $("rouletteNumber").textContent =
-      randInt(baseMin, baseMax) * multiplier;
+      (randInt(baseMin, baseMax) + stageOrbBonus) * multiplier;
   }, 95);
 
   game.rouletteTimer = setTimeout(() => {
@@ -668,7 +669,8 @@ function collectOrb(orb, player) {
   addFloatingText(orb.x, orb.y - 8, "+XP", "#ffe66d");
 
   const multiplier = game.mode === "duo" ? DUO_XP_MULTIPLIER : 1;
-  const amount = orb.xpValue * multiplier * player.xpMultiplier;
+  const stageXpBonus = game.mode === "solo" ? 1 + Math.min(0.02 * Math.max(0, game.stage - 1), 0.50) : 1;
+  const amount = orb.xpValue * multiplier * stageXpBonus * player.xpMultiplier;
 
   gainXP(player, amount);
   updateHud();
@@ -745,9 +747,10 @@ function updateOrbs(dt) {
 }
 
 function spawnOrbParticles(x, y) {
+  const mobileEffects = window.matchMedia("(pointer: coarse)").matches;
   const colors = ["#ffe66d", "#ffffff", "#36f5ff", "#ffcf45"];
 
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < (mobileEffects ? 5 : 18); i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = rand(45, 210);
     const life = rand(0.25, 0.7);
@@ -764,7 +767,7 @@ function spawnOrbParticles(x, y) {
     });
   }
 
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < (mobileEffects ? 1 : 5); i++) {
     game.particles.push({
       x: x + rand(-5, 5),
       y: y + rand(-5, 5),
@@ -791,6 +794,7 @@ function addFloatingText(x, y, text, color) {
 }
 
 function updateParticles(dt) {
+  if (window.matchMedia("(pointer: coarse)").matches && game.particles.length > 180) game.particles.splice(0, game.particles.length - 180);
   for (const particle of game.particles) {
     particle.life -= dt;
     particle.x += particle.vx * dt;
@@ -836,7 +840,7 @@ function createUpgradeChoices(player) {
       icon: "✨",
       name: "XP aprimorado",
       description: "+20% de XP pessoal",
-      apply: () => player.xpMultiplier *= 1.2
+      apply: () => player.xpMultiplier = Math.min(1.75, player.xpMultiplier * 1.22)
     },
     {
       icon: "⏱️",

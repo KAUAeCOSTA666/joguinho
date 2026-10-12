@@ -412,3 +412,30 @@
   .dir-btn { touch-action:none !important; -webkit-user-select:none !important; user-select:none !important; }
   .dir-btn.pressed { filter:brightness(1.35); background:#16405a !important; }
 }
+
+/* Mobile controls v2: override legacy button margins/sizing that reduced the actual touch targets. */
+@media (max-width: 850px), (orientation: landscape) and (pointer: coarse) {
+  #mobileControls { z-index: 9999 !important; pointer-events: none !important; }
+  #mobileP1, #mobileP2 { pointer-events: none !important; }
+  #mobileP1.hidden-mobile, #mobileP2.hidden-mobile { display:none !important; }
+  .direction-pad, body.landscape-mode .direction-pad {
+    width: clamp(142px, 22vw, 190px) !important;
+    height: clamp(132px, 21vw, 180px) !important;
+    gap: 4px !important; z-index: 10000 !important;
+    touch-action: none !important; pointer-events: auto !important;
+  }
+  .dir-btn, .direction-pad .dir-btn {
+    display:block !important; width:100% !important; height:100% !important;
+    min-width:0 !important; min-height:0 !important; margin:0 !important;
+    padding:0 !important; font-size:clamp(24px, 4.5vw, 36px) !important;
+    border-radius:12px !important; touch-action:none !important;
+    -webkit-user-select:none !important; user-select:none !important;
+    transition:none !important; box-shadow:none !important;
+  }
+  .dir-btn:hover, .dir-btn:active { transform:none !important; }
+}
+@media (max-width: 430px) and (orientation: portrait) {
+  #mobileControls { height: 170px !important; padding: 5px 8px 8px !important; }
+  #gameScreen { padding-bottom: 176px !important; }
+  .direction-pad, body.landscape-mode .direction-pad { width: 146px !important; height: 138px !important; }
+}
