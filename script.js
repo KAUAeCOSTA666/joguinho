@@ -1853,13 +1853,27 @@ function setupJoystick(id, playerId) {
 }
 
 function setupDirectionPads() {
-  // Cada pad controla exclusivamente o jogador indicado no HTML.
-  // Isso impede que o pad do convidado/host redirecione os comandos por engano.
+  // Touch-first controls: handle both Pointer Events and Touch Events because
+  // some mobile browsers/webviews deliver only one reliably.
   const held = { 1: new Set(), 2: new Set() };
   const refresh = id => {
     const keys = held[id];
     joystickState[id].x = (keys.has("right") ? 1 : 0) - (keys.has("left") ? 1 : 0);
     joystickState[id].y = (keys.has("down") ? 1 : 0) - (keys.has("up") ? 1 : 0);
+  };
+  const pressDirection = (id, dir, button, event) => {
+    if (event?.cancelable) event.preventDefault();
+    if (held[id].has(dir)) return;
+    held[id].add(dir);
+    refresh(id);
+    button.classList.add("pressed");
+  };
+  const releaseDirection = (id, dir, button, event) => {
+    if (event?.cancelable) event.preventDefault();
+    if (!held[id].has(dir)) return;
+    held[id].delete(dir);
+    refresh(id);
+    button.classList.remove("pressed");
   };
   const releaseAll = id => {
     held[id].clear();
@@ -1868,47 +1882,28 @@ function setupDirectionPads() {
   };
 
   document.querySelectorAll(".direction-pad[data-player]").forEach(pad => {
-    const playerId = Number(pad.dataset.player);
-    if (playerId !== 1 && playerId !== 2) return;
+    const id = Number(pad.dataset.player);
+    if (id !== 1 && id !== 2) return;
     pad.querySelectorAll(".dir-btn[data-dir]").forEach(button => {
       const dir = button.dataset.dir;
-      let pressed = false;
-      const press = event => {
-        event.preventDefault();
-        if (pressed) return;
-        pressed = true;
-        held[playerId].add(dir);
-        refresh(playerId);
-        button.classList.add("pressed");
-        if (event.pointerId !== undefined && button.setPointerCapture) {
-          try { button.setPointerCapture(event.pointerId); } catch (_) {}
-        }
-      };
-      const release = event => {
-        if (event) event.preventDefault?.();
-        if (!pressed) return;
-        pressed = false;
-        held[playerId].delete(dir);
-        refresh(playerId);
-        button.classList.remove("pressed");
-      };
-      if (window.PointerEvent) {
-        button.addEventListener("pointerdown", press, { passive: false });
-        button.addEventListener("pointerup", release, { passive: false });
-        button.addEventListener("pointercancel", release, { passive: false });
-        button.addEventListener("lostpointercapture", release);
-      } else {
-        button.addEventListener("touchstart", press, { passive: false });
-        button.addEventListener("touchend", release, { passive: false });
-        button.addEventListener("touchcancel", release, { passive: false });
-        button.addEventListener("mousedown", press, { passive: false });
-        button.addEventListener("mouseup", release, { passive: false });
-        button.addEventListener("mouseleave", release);
-      }
+      button.addEventListener("pointerdown", event => pressDirection(id, dir, button, event), { passive: false });
+      button.addEventListener("pointerup", event => releaseDirection(id, dir, button, event), { passive: false });
+      button.addEventListener("pointercancel", event => releaseDirection(id, dir, button, event), { passive: false });
+      // Explicit touch handlers are intentional fallback for mobile webviews.
+      button.addEventListener("touchstart", event => pressDirection(id, dir, button, event), { passive: false });
+      button.addEventListener("touchend", event => releaseDirection(id, dir, button, event), { passive: false });
+      button.addEventListener("touchcancel", event => releaseDirection(id, dir, button, event), { passive: false });
+      button.addEventListener("mousedown", event => pressDirection(id, dir, button, event), { passive: false });
+      button.addEventListener("mouseup", event => releaseDirection(id, dir, button, event), { passive: false });
+      button.addEventListener("mouseleave", event => releaseDirection(id, dir, button, event));
       button.addEventListener("contextmenu", event => event.preventDefault());
     });
   });
+  // A release outside the button or an app focus change must never leave movement stuck.
+  window.addEventListener("touchend", event => { if (!event.touches || event.touches.length === 0) { releaseAll(1); releaseAll(2); } }, { passive: true });
+  window.addEventListener("touchcancel", () => { releaseAll(1); releaseAll(2); }, { passive: true });
   window.addEventListener("blur", () => { releaseAll(1); releaseAll(2); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) { releaseAll(1); releaseAll(2); } });
 }
 
 function setupMobileSpecial() {
